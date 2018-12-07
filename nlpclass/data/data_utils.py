@@ -1,13 +1,16 @@
 import re
 import unicodedata
 
+from nlpclass.config import model_config
+
 
 class Lang:
     def __init__(self, name):
         self.name = name
         self.word2index = {}
         self.word2count = {}
-        self.index2word = {0: "SOS", 1: "EOS"}
+        self.index2word = {model_config.SOS_token: "SOS",
+                           model_config.EOS_token: "EOS"}
         self.n_words = 2  # Count SOS and EOS
 
     def addSentence(self, sentence):
@@ -65,7 +68,3 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     print(input_lang.name, input_lang.n_words)
     print(output_lang.name, output_lang.n_words)
     return input_lang, output_lang, pairs
-
-
-def indexesFromSentence(lang, sentence):
-    return [lang.word2index[word] for word in sentence.split(' ')]
