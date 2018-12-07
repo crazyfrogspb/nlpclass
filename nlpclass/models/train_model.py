@@ -2,11 +2,14 @@ import argparse
 import os.path as osp
 
 import mlflow
+import torch
 
 from nlpclass.data.data_utils import prepareData
+from nlpclass.models.models import DecoderRNN, EncoderRNN
 
 CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
+MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
 def load_tokens(filename):
@@ -41,17 +44,40 @@ def load_data():
     return train_data, dev_data, max_length
 
 
+def train_model(network_type, hidden_size, learning_rate, retrain=False):
+    train_data, dev_data, max_length = load_data()
+
+    if network_type == 'basic':
+        pass
+    elif network_type == 'attention':
+        pass
+    elif network_type == 'convolutional':
+        pass
+
+    model_file = f'{network_type}_hidden{hidden_size}_lr{learning_rate}.p'
+    if not retrain:
+        if osp.exists(osp.join(MODEL_DIR, model_file)):
+            model.load_state_dict(torch.load(osp.join(MODEL_DIR, model_file)))
+            return model
+
+    return model
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train NLP model')
 
-    parser.add_argument('--attention', action='store_true')
-    parser.add_argument('--beam', action='store_true')
-    parser.add_argument('--beamsize', type=int, default=5)
+    parser.add_argument('--network_type', type=str, default='basic')
+    parser.add_arguments('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--hidden_size', type=int, default=256)
+    parser.add_argument('--beam_search', action='store_true')
+    parser.add_argument('--beam_size', type=int, default=5)
+    parser.add_arguments('--retrain', action='store_true')
 
     args = parser.parse_args()
     args_dict = vars(args)
 
     with mlflow.start_run():
         mlflow.log_param('attention', args_dict['attention'])
-        mlflow.log_param('beam_search', args_dict['beam'])
-        mlflow.log_param('beam_size', args_dict['beamsize'])
+        mlflow.log_param('beam_search', args_dict['beam_search'])
+        mlflow.log_param('beam_size', args_dict['beams_ize'])
+        mlflow.log_param('hidden_size', args_dict['hidden_size'])
