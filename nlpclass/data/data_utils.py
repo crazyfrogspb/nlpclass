@@ -67,4 +67,4 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     print("Counted words:")
     print(input_lang.name, input_lang.n_words)
     print(output_lang.name, output_lang.n_words)
-    return input_lang, output_lang, pairs
+    return {'input_lang': input_lang, 'output_lang': output_lang, 'pairs': pairs}
