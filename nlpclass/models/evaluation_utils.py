@@ -2,6 +2,7 @@ import random
 
 import numpy as np
 import torch
+import sacrebleu
 
 def beam(decoder,decoder_output,decoder_hidden,beamsize):
     
@@ -210,7 +211,13 @@ def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize 
         translated_text += output_sentence
     
     return original_text, true_translation, translated_text
-    
+
+def bleu_eval(ref_trans,new_trans,raw_trans = False):
+    #returns a bleu score
+    if raw_trans:
+        return sacrebleu.raw_corpus_bleu(ref_trans,[new_trans]).score
+    else:
+        return sacrebleu.corpus_bleu(ref_trans,[new_trans]).score
 
 
 
