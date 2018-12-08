@@ -1,6 +1,9 @@
 import re
 import unicodedata
 
+import torch
+import torch.utils.data
+
 from nlpclass.config import model_config
 
 
@@ -10,8 +13,9 @@ class Lang:
         self.word2index = {}
         self.word2count = {}
         self.index2word = {model_config.SOS_token: "SOS",
-                           model_config.EOS_token: "EOS"}
-        self.n_words = 2  # Count SOS and EOS
+                           model_config.EOS_token: "EOS",
+                           model_config.PAD_token: "PAD"}
+        self.n_words = 3  # Count SOS and EOS
 
     def addSentence(self, sentence):
         for word in sentence.split(' '):
@@ -35,7 +39,8 @@ def unicodeToAscii(s):
 
 
 def normalizeString(s):
-    s = unicodeToAscii(s.lower().strip())
+    #s = unicodeToAscii(s.lower().strip())
+    s = s.lower().strip()
     s = re.sub(r"([.!?])", r" \1", s)
     return s
 
@@ -68,3 +73,56 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     print(input_lang.name, input_lang.n_words)
     print(output_lang.name, output_lang.n_words)
     return {'input_lang': input_lang, 'output_lang': output_lang, 'pairs': pairs}
+
+
+def indexesFromSentence(lang, sentence):
+    return [lang.word2index[word] for word in sentence.split(' ')]
+
+
+def tensorFromSentence(lang, sentence):
+    indexes = indexesFromSentence(lang, sentence)
+    indexes.append(model_config.EOS_token)
+    return torch.tensor(indexes, dtype=torch.long, device=model_config.device).view(-1, 1)
+
+
+class TranslationDataset(torch.utils.data.Dataset):
+    def __init__(self, data):
+        self.input_lang = data['input_lang']
+        self.output_lang = data['output_lang']
+        self.pairs = data['pairs']
+
+    def __len__(self):
+        return len(self.pairs)
+
+    def __getitem__(self, idx):
+        input_indices = indexesFromSentence(self.input_lang, self.pairs[idx][0])
+        output_indices = indexesFromSentence(
+            self.output_lang, self.pairs[idx][1])
+
+        return input_indices, output_indices
+
+
+def pad_seq(seq, max_length):
+    seq += [model_config.PAD_token for i in range(max_length - len(seq))]
+    return seq
+
+
+def text_collate_func(batch):
+    # thanks to https://github.com/spro/practical-pytorch/blob/master/seq2seq-translation/seq2seq-translation-batched.ipynb
+    unzipped = list(zip(*batch))
+    input_seqs = unzipped[0]
+    target_seqs = unzipped[1]
+
+    seq_pairs = sorted(zip(input_seqs, target_seqs),
+                       key=lambda p: len(p[0]), reverse=True)
+    input_seqs, target_seqs = zip(*seq_pairs)
+
+    input_lengths = [len(s) for s in input_seqs]
+    input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
+    target_lengths = [len(s) for s in target_seqs]
+    target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
+
+    return {'input': torch.LongTensor(input_padded).to(model_config.device),
+            'target': torch.LongTensor(target_padded).to(model_config.device),
+            'input_length': torch.LongTensor(input_lengths).to(model_config.device),
+            'output_length': torch.LongTensor(target_lengths).to(model_config.device)}
