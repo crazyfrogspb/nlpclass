@@ -28,14 +28,11 @@ def load_tokens(language, dataset_type):
 
 
 def load_data(language):
-    lines_en_train, lines_lang_train = load_tokens(language, 'train')
-    lines_en_dev, lines_lang_dev = load_tokens(language, 'dev')
-    lines_en_test, lines_lang_test = load_tokens(language, 'test')
-
     data = {}
     for dataset_type in ['train', 'dev', 'test']:
         lines_en, lines_lang = load_tokens(language, dataset_type)
-        data[dataset_type] = prepareData(language, 'eng', lines_lang, lines_en)
+        data[dataset_type] = prepareData(
+            language, 'eng', lines_lang, lines_en)
 
     max_length = 0
     for x in data['train']['pairs']:
@@ -48,19 +45,18 @@ def load_data(language):
     return data, max_length
 
 
-def train_model(language, network_type,
+def train_model(language, network_type, attention,
                 hidden_size, num_layers_enc, num_layers_dec, dropout, bidirectional,
-                learning_rate, optimizer, n_epochs, early_stopping,
+                batch_size, learning_rate, optimizer, n_epochs, early_stopping,
                 beam_search, beam_size,
                 retrain=False):
     data, max_length = load_data(language)
 
-    if network_type == 'basic':
-        encoder = EncoderRNN(data['train']['input_lang'].n_words, hidden_size)
-        decoder = DecoderRNN(hidden_size, data['train']['output_lang'].n_words)
-    elif network_type == 'attention':
-        encoder = None
-        decoder = None
+    if network_type == 'recurrent':
+        encoder = EncoderRNN(data['train']['input_lang'].n_words,
+                             hidden_size, num_layers_enc, dropout, bidirectional)
+        decoder = DecoderRNN(
+            hidden_size, data['train']['output_lang'].n_words, num_layers_dec)
     elif network_type == 'convolutional':
         encoder = None
         decoder = None
@@ -80,21 +76,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train NLP model')
 
     parser.add_argument('language', type=str)
-    parser.add_argument('--network_type', type=str, default='basic')
+    parser.add_argument('--network_type', type=str, default='recurrent')
+    parser.add_argument('--attention', action='store_true')
 
+    parser.add_argument('--embedding_size', type=int, default=100)
     parser.add_argument('--hidden_size', type=int, default=256)
     parser.add_argument('--num_layers_enc', type=int, default=1)
     parser.add_argument('--num_layers_dec', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--bidirectional', action='stor_true')
 
-    parser.add_arguments('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--optimizer', type=str, default='adam')
     parser.add_argument('--n_epochs', type=int, default=100)
     parser.add_argument('--early_stopping', type=int, default=10)
 
     parser.add_argument('--beam_search', action='store_true')
     parser.add_argument('--beam_size', type=int, default=5)
+    parser.add_argument('--beam_alpha', type=float, default=0.0)
 
     parser.add_arguments('--retrain', action='store_true')
 
