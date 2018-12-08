@@ -35,22 +35,6 @@ def showPlot(points):
     plt.plot(points)
 
 
-def indexesFromSentence(lang, sentence):
-    return [lang.word2index[word] for word in sentence.split(' ')]
-
-
-def tensorFromSentence(lang, sentence):
-    indexes = indexesFromSentence(lang, sentence)
-    indexes.append(model_config.EOS_token)
-    return torch.tensor(indexes, dtype=torch.long, device=model_config.device).view(-1, 1)
-
-
-def tensorsFromPair(input_lang, output_lang, pair):
-    input_tensor = tensorFromSentence(input_lang, pair[0])
-    target_tensor = tensorFromSentence(output_lang, pair[1])
-    return (input_tensor, target_tensor)
-
-
 def train(input_tensor, target_tensor, model,
           encoder_optimizer, decoder_optimizer, criterion,
           max_length, teacher_forcing_ratio=0.5):
@@ -114,7 +98,7 @@ def trainIters(model, pairs, n_iters, print_every=1000, plot_every=100, learning
 
     encoder_optimizer = optim.Adam(model.encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.Adam(model.decoder.parameters(), lr=learning_rate)
-    training_pairs = [tensorsFromPair(random.choice(pairs))
+    training_pairs = [tensorsFromPair(input_lang, output_lang, random.choice(pairs))
                       for i in range(n_iters)]
     criterion = nn.NLLLoss()
 
