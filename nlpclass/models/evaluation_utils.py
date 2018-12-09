@@ -195,12 +195,12 @@ def one_sen_trans(encoder, decoder, sentence, view = True, max_length=200, greed
 
 def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize = 3):  
     #to translate a corpus
-    original_text = ""
-    translated_text = ""
-    true_translation = ""
+    original_text = []
+    translated_text = []
+    true_translation = []
     for x in pairs:
-        original_text += x[0]
-        true_translation += x[1]
+        original_text.append(x[0])
+        true_translation.append(x[1])
         if greedy:
             output_words, _ = create_translation(encoder, decoder, x[0])
             
@@ -208,17 +208,17 @@ def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize 
             output_words, translation_bank = create_translation(encoder, decoder, x[0], max_length, greedy = False, beamsize = beamsize)
         
         output_sentence = ' '.join(output_words)
-        translated_text += output_sentence
+        translated_text.append(output_sentence)
     
     return original_text, true_translation, translated_text
 
-def bleu_eval(ref_trans,new_trans,raw_trans = False):
+def bleu_eval(ref_trans,new_trans,raw_trans = True):
     #returns a bleu score
-    #input strings
+    #input lists of strings, must be of the same length! 
     if raw_trans:
-        return sacrebleu.raw_corpus_bleu(ref_trans,[new_trans]).score
+        return sacrebleu.raw_corpus_bleu(new_trans,[ref_trans]).score
     else:
-        return sacrebleu.corpus_bleu(ref_trans,[new_trans]).score
+        return sacrebleu.corpus_bleu(new_trans,[ref_trans]).score
 
 
 
