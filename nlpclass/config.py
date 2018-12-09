@@ -6,7 +6,7 @@ class ModelConfig():
     SOS_token = 0
     EOS_token = 1
     PAD_token = 2
-    teacher_forcing_ratio = 0.5
+    grad_norm = 50.0
 
 
 model_config = ModelConfig()
