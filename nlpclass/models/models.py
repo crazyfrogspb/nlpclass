@@ -1,6 +1,8 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 from nlpclass.config import model_config
 
@@ -108,8 +110,18 @@ class DecoderRNN(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=model_config.device)
 
 
+def calculate_loss(decoder_output, input_index, input_tokens, input_length):
+    mask = torch.LongTensor(np.repeat([input_index], decoder_output.size(0)))
+    mask = Variable(mask).to(model_config.device)
+    mask = mask < input_length
+
+    return -torch.gather(decoder_output, dim=1,
+                        index=input_tokens.unsqueeze(1)).squeeze() * mask.float()
+
+
 class TranslationModel(nn.Module):
     def __init__(self, encoder, decoder):
+        super().__init__()
         self.encoder = encoder
         self.decoder = decoder
 
@@ -119,3 +131,23 @@ class TranslationModel(nn.Module):
         input_length = x['input_length']
 
         encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
+
+        decoder_hidden = encoder_hidden
+        context = None
+        if self.decoder.attention:
+            context = Variable(torch.zeros(encoder_output.size(
+                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+
+        total_loss = 0
+
+        for input_idx in range(target_seq.size(1) - 1):
+            input_tokens = target_seq[:, input_idx]
+            decoder_output, decoder_hidden, context, weights = self.decoder(
+                input_tokens, decoder_hidden, encoder_output, context)
+            loss = calculate_loss(decoder_output, input_idx,
+                                  input_tokens, input_length)
+            loss_sum = loss.sum()
+            if loss_sum > 0:
+                total_loss += loss_sum / torch.sum(loss > 0).float()
+
+        return total_loss, decoder_output
