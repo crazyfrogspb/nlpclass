@@ -6,11 +6,13 @@ import mlflow.pytorch
 import numpy as np
 import torch
 import torch.utils.data
+from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm
 
+from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
                                       text_collate_func)
 from nlpclass.models.models import DecoderRNN, EncoderRNN, TranslationModel
-from tqdm import tqdm
 
 CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
@@ -45,7 +47,7 @@ def load_data(language, batch_size):
                                                                  shuffle=True)
 
     max_length = 0
-    for x in data['train']['pairs']:
+    for x in data['train'].pairs:
         len1 = len(x[0].split(" "))
         len2 = len(x[1].split(" "))
         max_len = max(len1, len2)
@@ -58,16 +60,19 @@ def load_data(language, batch_size):
 def train_epoch(model, optimizer, data, data_loaders):
     model.train()
     for batch in data_loaders['train']:
-        total_loss, _ = model(batch)
+        total_loss, _, _ = model(batch)
         total_loss.backward()
+        clip_grad_norm_(filter(lambda p: p.requires_grad,
+                              model.parameters()), model_config.grad_norm)
         optimizer.step()
 
     model.eval()
     epoch_loss = 0
-    for batch in data_loaders['val']:
-        total_loss, _ = model(batch)
-        epoch_loss += total_loss.item() * \
-            batch['input'].size(0) / len(data['val'])
+    with torch.no_grad():
+        for batch in data_loaders['val']:
+            total_loss, _, _ = model(batch)
+            epoch_loss += total_loss.item() * \
+                batch['input'].size(0) / len(data['val'])
 
     return epoch_loss
 
@@ -78,23 +83,27 @@ def finalize_run(best_model, best_loss):
 
 
 def train_model(language, network_type, attention,
-                hidden_size, num_layers_enc, num_layers_dec, dropout, bidirectional,
+                embedding_size, hidden_size, num_layers_enc, num_layers_dec,
+                dropout, bidirectional,
                 batch_size, learning_rate, optimizer, n_epochs, early_stopping,
-                beam_search, beam_size,
+                teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
                 retrain=False):
     training_parameters = locals()
     data, data_loaders, max_length = load_data(language, batch_size)
 
     if network_type == 'recurrent':
-        encoder = EncoderRNN(data['train']['input_lang'].n_words,
-                             hidden_size, num_layers_enc, dropout, bidirectional)
-        decoder = DecoderRNN(
-            hidden_size, data['train']['output_lang'].n_words, num_layers_dec)
+        encoder = EncoderRNN(data['train'].input_lang.n_words,
+                             embedding_size, hidden_size, num_layers_enc,
+                             dropout, bidirectional)
+        decoder = DecoderRNN(data['train'].output_lang.n_words,
+                             embedding_size, hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
         encoder = None
         decoder = None
 
-    model = TranslationModel(encoder, decoder)
+    model = TranslationModel(encoder, decoder,
+                             max_length=max_length,
+                             teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)
 
     if optimizer == 'adam':
         optimizer = torch.optim.Adam(
@@ -116,8 +125,10 @@ def train_model(language, network_type, attention,
         for epoch in tqdm(range(n_epochs)):
             if early_counter >= early_stopping:
                 finalize_run(best_model, best_loss)
+                return best_model
 
             epoch_loss = train_epoch(model, optimizer, data, data_loaders)
+            print(f'Current loss: {epoch_loss}')
             mlflow.log_metric('eval_loss', epoch_loss)
 
             if epoch_loss < best_loss:
@@ -125,3 +136,6 @@ def train_model(language, network_type, attention,
                 best_model = deepcopy(model)
             else:
                 early_counter += 1
+
+        finalize_run(best_model, best_loss)
+        return best_model
