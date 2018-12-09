@@ -193,7 +193,7 @@ def one_sen_trans(encoder, decoder, sentence, view = True, max_length=200, greed
         print('<', output_sentence)
 
 
-def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize = 3):  
+def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize = 3, remove_eos = True):  
     #to translate a corpus
     original_text = []
     translated_text = []
@@ -207,7 +207,11 @@ def full_trans(encoder, decoder, pairs, max_length=200, greedy = True, beamsize 
         else:
             output_words, translation_bank = create_translation(encoder, decoder, x[0], max_length, greedy = False, beamsize = beamsize)
         
-        output_sentence = ' '.join(output_words)
+        if remove_eos:
+            output_sentence = ' '.join(output_words.remove('EOS'))
+        else:
+            output_sentence = ' '.join(output_words)
+        
         translated_text.append(output_sentence)
     
     return original_text, true_translation, translated_text
