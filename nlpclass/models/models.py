@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -116,19 +118,22 @@ def calculate_loss(decoder_output, input_index, input_tokens, input_length):
     mask = mask < input_length
 
     return -torch.gather(decoder_output, dim=1,
-                        index=input_tokens.unsqueeze(1)).squeeze() * mask.float()
+                         index=input_tokens.unsqueeze(1)).squeeze() * mask.float()
 
 
 class TranslationModel(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, max_length=100, teacher_forcing_ratio=1.0):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.max_length = max_length
+        self.teacher_forcing_ratio = teacher_forcing_ratio
 
     def forward(self, x):
         input_seq = x['input']
         target_seq = x['target']
         input_length = x['input_length']
+        batch_size = input_seq.size(0)
 
         encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
 
@@ -140,14 +145,74 @@ class TranslationModel(nn.Module):
 
         total_loss = 0
 
+        if random.random() < self.teacher_forcing_ratio:
+            use_teacher_forcing = True
+        else:
+            use_teacher_forcing = False
+
+        decoder_input = Variable(torch.LongTensor(
+            [model_config.SOS_token] * batch_size)).to(model_config.device)
+
         for input_idx in range(target_seq.size(1) - 1):
-            input_tokens = target_seq[:, input_idx]
             decoder_output, decoder_hidden, context, weights = self.decoder(
-                input_tokens, decoder_hidden, encoder_output, context)
+                decoder_input, decoder_hidden, encoder_output, context)
+
             loss = calculate_loss(decoder_output, input_idx,
-                                  input_tokens, input_length)
+                                  target_seq[:, input_idx], input_length)
             loss_sum = loss.sum()
             if loss_sum > 0:
                 total_loss += loss_sum / torch.sum(loss > 0).float()
 
-        return total_loss, decoder_output
+            if use_teacher_forcing:
+                decoder_input = target_seq[:, input_idx]
+            else:
+                _, topi = decoder_output.data.topk(1)
+                decoder_input = Variable(torch.cat(topi))
+                decoder_input = decoder_input.to(model_config.device)
+
+        return total_loss, decoder_output, decoder_hidden
+
+    def greedy(self, x):
+        input_seq = x['input']
+        input_length = x['input_length']
+        batch_size = input_seq.size(0)
+
+        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
+
+        decoder_hidden = encoder_hidden
+        context = None
+        if self.decoder.attention:
+            context = Variable(torch.zeros(encoder_output.size(
+                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+
+        decoder_input = Variable(torch.LongTensor(
+            [model_config.SOS_token] * batch_size)).to(model_config.device)
+        predictions = torch.LongTensor(
+            [model_config.SOS_token] * batch_size).unsqueeze(1).to(model_config.device)
+
+        for input_idx in range(self.max_length):
+            decoder_output, decoder_hidden, context, weights = self.decoder(
+                decoder_input, decoder_hidden, encoder_output, context)
+
+            topv, topi = decoder_output.topk(1)
+            predictions = torch.cat((predictions, topi), dim=1)
+
+            num_done = ((predictions == model_config.EOS_token).sum(
+                dim=1) > 0).sum().cpu().numpy()
+            if num_done == batch_size:
+                return predictions
+
+        return predictions
+
+    def beam(self, x):
+        input_seq = x['input']
+        input_length = x['input_length']
+        batch_size = input_seq.size(0)
+
+        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
+
+        decoder_hidden = encoder_hidden
+        context = None
+        if self.decoder.attention:
+            context = Variable(torch.zeros(encoder_output.size(
+                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
