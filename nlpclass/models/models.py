@@ -57,6 +57,7 @@ class Attention(nn.Module):
         self.attn = nn.Linear(self.hidden_size, hidden_size)
 
     def forward(self, hidden, encoder_output):
+        encoder_output = encoder_output.contiguous()
         energies = self.attn(encoder_output.view(-1, self.hidden_size))
         energies = torch.bmm(energies.view(
             *encoder_output.size()), hidden.transpose(1, 2)).squeeze(2)
