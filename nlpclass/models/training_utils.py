@@ -41,12 +41,16 @@ def load_data(language, subsample=1.0, batch_size=16):
     data_loaders = {}
     for dataset_type in ['train', 'dev', 'test']:
         lines_en, lines_lang = load_tokens(language, dataset_type)
-        if subsample < 1.0:
+        if subsample < 1.0 and dataset_type == 'train':
             sample_size = int(subsample * len(lines_en))
             lines_en, lines_lang = zip(
                 *random.sample(list(zip(lines_en, lines_lang)), sample_size))
+        if dataset_type == 'train':
+            load_embeddings = True
+        else:
+            load_embeddings = False
         data[dataset_type] = TranslationDataset(prepareData(
-            'eng', language, lines_en, lines_lang))
+            'eng', language, lines_en, lines_lang, load_embeddings=load_embeddings))
         data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
                                                                  batch_size=batch_size,
                                                                  collate_fn=text_collate_func,
@@ -69,7 +73,7 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, criterion):
+def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=300):
     epoch_loss = 0
     for i, batch in enumerate(tqdm(data_loaders['train'])):
         model.train()
@@ -81,6 +85,15 @@ def train_epoch(model, optimizer, data, data_loaders, criterion):
                                model.parameters()), model_config.grad_norm)
         optimizer.step()
         epoch_loss += loss.item()
+        if i % logging_freq == 0:
+            val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
+            mlflow.log_metric('val_loss', val_loss)
+            mlflow.log_metric('val_bleu', val_bleu)
+
+            train_loss, train_bleu = evaluate(
+                model, data, data_loaders, criterion, dataset_type='train')
+            mlflow.log_metric('train_loss', train_loss)
+            mlflow.log_metric('train_bleu', train_bleu)
     return epoch_loss / (i + 1)
 
 
@@ -123,12 +136,8 @@ def train_model(language, network_type, attention,
         encoder = EncoderRNN(data['train'].input_lang.n_words,
                              embedding_size, hidden_size, num_layers_enc,
                              dropout, bidirectional)
-        if bidirectional:
-            multiplier = 2
-        else:
-            multiplier = 1
         decoder = DecoderRNN(data['train'].output_lang.n_words,
-                             embedding_size, multiplier * hidden_size, num_layers_dec, attention)
+                             embedding_size, hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
         encoder = None
         decoder = None

@@ -6,8 +6,10 @@ class ModelConfig():
     SOS_token = 0
     EOS_token = 1
     PAD_token = 2
+    UNK_token = 3
     grad_norm = 10.0
     max_length = 100
+    embed_size = 300
 
 
 model_config = ModelConfig()

@@ -12,7 +12,7 @@ from nlpclass.config import model_config
 class EncoderRNN(nn.Module):
     def __init__(self, input_size,
                  embedding_size=100, hidden_size=64, num_layers=1,
-                 dropout=0.0, bidirectional=False):
+                 dropout=0.0, bidirectional=False, pretrained_embeddings=None):
         super().__init__()
         self.input_size = input_size
         self.embedding_size = embedding_size
@@ -21,24 +21,32 @@ class EncoderRNN(nn.Module):
         self.dropout = dropout
         self.bidirectional = bidirectional
 
-        self.embedding = nn.Embedding(self.input_size, self.embedding_size)
+        self.embedding = nn.Embedding(
+            self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
+
+        self.init_weights(pretrained_embeddings)
 
     def forward(self, x, lengths, hidden=None):
         embed = self.embedding(x)
         packed = torch.nn.utils.rnn.pack_padded_sequence(
             embed, lengths, batch_first=True)
-        encoded_input, hidden = self.rnn(packed, hidden)
-        encoded_input, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            encoded_input, padding_value=model_config.PAD_token, batch_first=True)
+        encoder_output, hidden = self.rnn(packed, hidden)
+        encoder_output, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            encoder_output, padding_value=model_config.PAD_token, batch_first=True)
 
         if self.bidirectional:
-            hidden = torch.cat(
-                (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0)), 2)
+            encoder_output = (encoder_output[:, :, :self.hidden_size] +
+                              encoder_output[:, :, self.hidden_size:])
 
-        return encoded_input, hidden
+        return encoder_output, hidden
+
+    def init_weights(self, pretrained_embeddings):
+        if pretrained_embeddings is not None:
+            self.embedding.weight.data = torch.from_numpy(
+                pretrained_embeddings).float()
 
 
 class Attention(nn.Module):
@@ -60,7 +68,7 @@ class Attention(nn.Module):
 class DecoderRNN(nn.Module):
     def __init__(self, output_size,
                  embedding_size=100, hidden_size=64,
-                 num_layers=1, attention=False):
+                 num_layers=1, attention=False, pretrained_embeddings=None):
         super().__init__()
         self.output_size = output_size
         self.embedding_size = embedding_size
@@ -76,15 +84,18 @@ class DecoderRNN(nn.Module):
             rnn_input_size = self.embedding_size
             self.out = nn.Linear(self.hidden_size, self.output_size)
 
-        self.embedding = nn.Embedding(self.output_size, self.embedding_size)
+        self.embedding = nn.Embedding(
+            self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
+
+        self.init_weights(pretrained_embeddings)
 
     def forward(self, input, hidden, encoder_output=None, context=None):
         embed = self.embedding(input).unsqueeze(1)
 
         if self.attention:
-            embed = torch.cat((embed, context), 2)
+            embed = torch.cat((embed, context), dim=2)
             output, hidden = self.rnn(embed, hidden)
             weights = self.attention_layer(output, encoder_output)
             context = weights.unsqueeze(1).bmm(encoder_output)
@@ -95,6 +106,11 @@ class DecoderRNN(nn.Module):
             output, hidden = self.rnn(embed, hidden)
             output = self.out(output.squeeze(1))
             return output, hidden, context, encoder_output
+
+    def init_weights(self, pretrained_embeddings):
+        if pretrained_embeddings is not None:
+            self.embedding.weight.data = torch.from_numpy(
+                pretrained_embeddings).float()
 
 
 def calc_loss(logits, target, criterion):
@@ -117,18 +133,18 @@ class TranslationModel(nn.Module):
     def encode_sentence(self, input_seq, input_length):
         batch_size = input_seq.size(0)
 
-        encoded_input, encoder_hidden = self.encoder(input_seq, input_length)
+        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
 
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
         context = None
         if self.decoder.attention:
-            context = Variable(torch.zeros(encoded_input.size(
-                0), encoded_input.size(2))).unsqueeze(1).to(model_config.device)
+            context = Variable(torch.zeros(encoder_output.size(
+                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
 
         decoder_input = Variable(torch.LongTensor(
             [model_config.SOS_token] * batch_size)).to(model_config.device)
 
-        return encoded_input, decoder_hidden, decoder_input, context
+        return encoder_output, decoder_hidden, decoder_input, context
 
     def forward(self, x):
         input_seq = x['input']
@@ -185,9 +201,9 @@ class TranslationModel(nn.Module):
 
             decoder_input = Variable(topi).squeeze().to(model_config.device)
 
-            #num_done = ((predictions == model_config.EOS_token).sum(
+            # num_done = ((predictions == model_config.EOS_token).sum(
             #    dim=1) > 0).sum().cpu().numpy()
-            #if num_done == batch_size:
+            # if num_done == batch_size:
             #    return predictions
 
         return predictions

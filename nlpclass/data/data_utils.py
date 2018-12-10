@@ -1,21 +1,33 @@
+import os.path as osp
 import re
 import unicodedata
 
+import numpy as np
 import torch
 import torch.utils.data
+from gensim.models import KeyedVectors
 
 from nlpclass.config import model_config
+
+CURRENT_PATH = osp.dirname(osp.realpath(__file__))
+DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
 
 
 class Lang:
     def __init__(self, name):
         self.name = name
-        self.word2index = {}
+        self.word2index = {"SOS": model_config.SOS_token,
+                           "EOS": model_config.EOS_token,
+                           "PAD": model_config.PAD_token,
+                           "UNK": model_config.UNK_token}
         self.word2count = {}
         self.index2word = {model_config.SOS_token: "SOS",
                            model_config.EOS_token: "EOS",
-                           model_config.PAD_token: "PAD"}
-        self.n_words = 3  # Count SOS and EOS
+                           model_config.PAD_token: "PAD",
+                           model_config.UNK_token: "UNK"}
+        self.n_words = 4  # Count SOS and EOS
+        self.embeddings = None
+        self.pretrained_inds = []
 
     def addSentence(self, sentence):
         for word in sentence.split(' '):
@@ -29,6 +41,21 @@ class Lang:
             self.n_words += 1
         else:
             self.word2count[word] += 1
+
+    def load_embeddings(self):
+        self.embeddings = np.zeros((self.n_words, model_config.embed_size))
+        ft_embeddings = KeyedVectors.load_word2vec_format(
+            osp.join(DATA_DIR, 'raw', f'wiki.{self.name}.vec'))
+        for token, id_ in self.word2index.items():
+            if token in ft_embeddings:
+                self.embeddings[id_] = ft_embeddings[token]
+                self.pretrained_inds.append(id_)
+            elif token == 'PAD':
+                self.embeddings[id_] = np.zeros(model_config.embed_size)
+                self.pretrained_inds.append(id_)
+            else:
+                self.embeddings[id_] = np.random.normal(
+                    size=(model_config.embed_size, ))
 
 
 def unicodeToAscii(s):
@@ -65,7 +92,7 @@ def readLangs(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     return input_lang, output_lang, pairs
 
 
-def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
+def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False, load_embeddings=False):
     input_lang, output_lang, pairs = readLangs(
         lang1_name, lang2_name, lang1_data, lang2_data, reverse=reverse)
     print("Counting words...")
@@ -75,6 +102,9 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     print("Counted words:")
     print(input_lang.name, input_lang.n_words)
     print(output_lang.name, output_lang.n_words)
+    if load_embeddings:
+        input_lang.load_embeddings()
+        output_lang.load_embeddings()
     return {'input_lang': input_lang, 'output_lang': output_lang, 'pairs': pairs}
 
 

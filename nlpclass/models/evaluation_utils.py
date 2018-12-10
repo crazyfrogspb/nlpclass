@@ -159,13 +159,16 @@ def create_translation(model, data, data_loader, max_length,
                     return final_trans, final_sentences
 
 
-def output_to_translations(predictions, data):
+def output_to_translations(predictions, data, output=True):
     translations = []
     for row in predictions.cpu().numpy():
         decoded_words = []
         for elem in row:
             if elem not in [model_config.SOS_token, model_config.EOS_token, model_config.PAD_token]:
-                decoded_words.append(data.output_lang.index2word[elem])
+                if output:
+                    decoded_words.append(data.output_lang.index2word[elem])
+                else:
+                    decoded_words.append(data.input_lang.index2word[elem])
             if elem == model_config.EOS_token:
                 break
                 translations.append(' '.join(decoded_words))

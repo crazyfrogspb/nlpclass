@@ -82,11 +82,11 @@ test_environment:
 
 train_model_test:
 	export MLFLOW_EXPERIMENT_ID=1 && \
-	python nlpclass/models/train_model.py zh --subsample 0.1 --n_epochs 3 && \
-	python nlpclass/models/train_model.py zh --subsample 0.1 --n_epochs 3 --teacher_forcing_ratio 0.5 && \
-	python nlpclass/models/train_model.py zh --subsample 0.1 --n_epochs 3 --bidirectional && \
-	python nlpclass/models/train_model.py zh --subsample 0.1 --n_epochs 3 --attention && \
-	python nlpclass/models/train_model.py zh --subsample 0.1 --n_epochs 3 --dropout 0.2
+	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 && \
+	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 --teacher_forcing_ratio 0.5 && \
+	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 --bidirectional && \
+	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 --attention && \
+	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 --dropout 0.2
 
 train_model:
 	export MLFLOW_EXPERIMENT_ID=0 && \
