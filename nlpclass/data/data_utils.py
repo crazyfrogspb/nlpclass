@@ -40,7 +40,7 @@ def unicodeToAscii(s):
 
 
 def normalizeString(s):
-    #s = unicodeToAscii(s.lower().strip())
+    # s = unicodeToAscii(s.lower().strip())
     s = s.lower().strip()
     s = re.sub(r"([!?])", r" \1", s)
     s = re.sub(" &apos;", r"", s)
@@ -67,7 +67,7 @@ def readLangs(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
 
 def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     input_lang, output_lang, pairs = readLangs(
-        lang1_name, lang2_name, lang1_data, lang2_data)
+        lang1_name, lang2_name, lang1_data, lang2_data, reverse=reverse)
     print("Counting words...")
     for pair in pairs:
         input_lang.addSentence(pair[0])
@@ -79,13 +79,10 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
 
 
 def indexesFromSentence(lang, sentence):
-    return [lang.word2index[word] for word in sentence.split(' ')]
-
-
-def tensorFromSentence(lang, sentence):
-    indexes = indexesFromSentence(lang, sentence)
-    indexes.append(model_config.EOS_token)
-    return torch.tensor(indexes, dtype=torch.long, device=model_config.device).view(-1, 1)
+    tokens = sentence.split(' ')[:model_config.max_length]
+    indices = [lang.word2index[word] for word in tokens]
+    indices.append(model_config.EOS_token)
+    return indices
 
 
 class TranslationDataset(torch.utils.data.Dataset):
@@ -112,11 +109,7 @@ def pad_seq(seq, max_length):
 
 def text_collate_func(batch):
     # thanks to https://github.com/spro/practical-pytorch/blob/master/seq2seq-translation/seq2seq-translation-batched.ipynb
-    unzipped = list(zip(*batch))
-    input_seqs = unzipped[0]
-    target_seqs = unzipped[1]
-
-    seq_pairs = sorted(zip(input_seqs, target_seqs),
+    seq_pairs = sorted(batch,
                        key=lambda p: len(p[0]), reverse=True)
     input_seqs, target_seqs = zip(*seq_pairs)
 
@@ -128,4 +121,4 @@ def text_collate_func(batch):
     return {'input': torch.LongTensor(input_padded).to(model_config.device),
             'target': torch.LongTensor(target_padded).to(model_config.device),
             'input_length': torch.LongTensor(input_lengths).to(model_config.device),
-            'output_length': torch.LongTensor(target_lengths).to(model_config.device)}
+            'target_length': torch.LongTensor(target_lengths).to(model_config.device)}

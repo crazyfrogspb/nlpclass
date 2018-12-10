@@ -93,17 +93,14 @@ class DecoderRNN(nn.Module):
             return output, hidden, context, weights
         else:
             output, hidden = self.rnn(embed, hidden)
-            output = F.log_softmax(self.out(output.squeeze(1)), dim=1)
+            output = self.out(output.squeeze(1))
             return output, hidden, context, encoder_output
 
 
-def calculate_loss(decoder_output, idx, target_tokens, target_length):
-    mask = torch.LongTensor(np.repeat([idx], decoder_output.size(0)))
-    mask = Variable(mask).to(model_config.device)
-    mask = mask < target_length
-
-    return -torch.gather(decoder_output, dim=1,
-                         index=target_tokens.unsqueeze(1)).squeeze() * mask.float()
+def calc_loss(logits, target, criterion):
+    logits_flat = logits.view(-1, logits.size(-1))
+    target_flat = target.view(-1, 1).squeeze()
+    return criterion(logits_flat, target_flat)
 
 
 class TranslationModel(nn.Module):
@@ -138,24 +135,24 @@ class TranslationModel(nn.Module):
         target_seq = x['target']
         input_length = x['input_length']
         target_length = x['target_length']
+        batch_size = input_seq.size(0)
 
         encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
             input_seq, input_length)
-
-        total_loss = 0
 
         if random.random() < self.teacher_forcing_ratio:
             use_teacher_forcing = True
         else:
             use_teacher_forcing = False
 
+        decoder_outputs = Variable(torch.zeros(
+            model_config.max_length + 1, batch_size, self.decoder.output_size)).to(model_config.device)
+
         for idx in range(target_seq.size(1) - 1):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
 
-            loss = calculate_loss(decoder_output, idx,
-                                  target_seq[:, idx], target_length)
-            total_loss += loss
+            decoder_outputs[idx] = decoder_output
 
             if use_teacher_forcing:
                 decoder_input = target_seq[:, idx]
@@ -164,9 +161,9 @@ class TranslationModel(nn.Module):
                 decoder_input = Variable(topi).squeeze()
                 decoder_input = decoder_input.to(model_config.device)
 
-        total_loss /= target_length.float()
+            decoder_hidden.detach()
 
-        return total_loss.mean(), decoder_output, decoder_hidden
+        return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous()
 
     def greedy(self, x):
         input_seq = x['input']

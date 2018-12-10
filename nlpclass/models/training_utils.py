@@ -63,17 +63,24 @@ def load_data(language, subsample=1.0, batch_size=16):
     return data, data_loaders, max_length
 
 
-def train_epoch(model, optimizer, data, data_loaders, log_frequency=1000):
+def calc_loss(logits, target, criterion):
+    logits_flat = logits.view(-1, logits.size(-1))
+    target_flat = target.view(-1, 1).squeeze()
+    return criterion(logits_flat, target_flat)
+
+
+def train_epoch(model, optimizer, data, data_loaders, criterion):
     epoch_loss = 0
     for i, batch in enumerate(tqdm(data_loaders['train'])):
         model.train()
         optimizer.zero_grad()
-        total_loss, _, _ = model(batch)
-        total_loss.backward()
+        logits = model(batch)
+        loss = calc_loss(logits, batch['target'], criterion)
+        loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
                                model.parameters()), model_config.grad_norm)
         optimizer.step()
-        epoch_loss += total_loss.item()
+        epoch_loss += loss.item()
     return epoch_loss / (i + 1)
 
 
@@ -83,16 +90,15 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.pytorch.log_model(best_model, 'models')
 
 
-def evaluate(model, data, data_loaders, dataset_type='dev'):
+def evaluate(model, data, data_loaders, criterion, dataset_type='dev'):
     model.eval()
     epoch_loss = 0
     with torch.no_grad():
         original_strings = []
         translated_strings = []
         for i, batch in enumerate(data_loaders[dataset_type]):
-            total_loss, _, _ = model(batch)
-            epoch_loss += (total_loss.item() *
-                           batch['input'].size(0) / len(data[dataset_type]))
+            logits = model(batch)
+            epoch_loss += calc_loss(logits, batch['target'], criterion).item()
             original = output_to_translations(batch['target'], data['train'])
             translations = output_to_translations(
                 model.greedy(batch), data['train'])
@@ -101,7 +107,7 @@ def evaluate(model, data, data_loaders, dataset_type='dev'):
         bleu = bleu_eval(original_strings, translated_strings)
         model.train()
 
-    return epoch_loss, bleu
+    return epoch_loss / (i + 1), bleu
 
 
 def train_model(language, network_type, attention,
@@ -139,6 +145,10 @@ def train_model(language, network_type, attention,
     else:
         raise ValueError(f'Option {optimizer} is not supported for optimizer')
 
+    weight = torch.ones(model.decoder.output_size).to(model_config.device)
+    weight[model_config.PAD_token] = 0
+    criterion = torch.nn.CrossEntropyLoss(weight)
+
     best_bleu = 0.0
     best_loss = np.inf
     early_counter = 0
@@ -153,10 +163,11 @@ def train_model(language, network_type, attention,
                 finalize_run(best_model, best_bleu, best_loss)
                 return best_model
 
-            train_loss = train_epoch(model, optimizer, data, data_loaders)
+            train_loss = train_epoch(
+                model, optimizer, data, data_loaders, criterion)
             mlflow.log_metric('train_loss', train_loss)
 
-            val_loss, val_bleu = evaluate(model, data, data_loaders)
+            val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
