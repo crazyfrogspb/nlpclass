@@ -73,7 +73,7 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=500):
+def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=1000):
     epoch_loss = 0
     for i, batch in enumerate(tqdm(data_loaders['train'])):
         model.train()
@@ -103,13 +103,15 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.pytorch.log_model(best_model, 'models')
 
 
-def evaluate(model, data, data_loaders, criterion, dataset_type='dev'):
+def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch=100):
     model.eval()
     epoch_loss = 0
     with torch.no_grad():
         original_strings = []
         translated_strings = []
         for i, batch in enumerate(data_loaders[dataset_type]):
+            if i > max_batch:
+                break
             logits = model(batch)
             epoch_loss += calc_loss(logits, batch['target'], criterion).item()
             original = output_to_translations(batch['target'], data['train'])
