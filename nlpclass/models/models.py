@@ -185,10 +185,10 @@ class TranslationModel(nn.Module):
 
             decoder_input = Variable(topi).squeeze().to(model_config.device)
 
-            num_done = ((predictions == model_config.EOS_token).sum(
-                dim=1) > 0).sum().cpu().numpy()
-            if num_done == batch_size:
-                return predictions
+            #num_done = ((predictions == model_config.EOS_token).sum(
+            #    dim=1) > 0).sum().cpu().numpy()
+            #if num_done == batch_size:
+            #    return predictions
 
         return predictions
 
