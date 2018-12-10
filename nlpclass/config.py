@@ -7,7 +7,7 @@ class ModelConfig():
     EOS_token = 1
     PAD_token = 2
     UNK_token = 3
-    grad_norm = 10.0
+    grad_norm = 5.0
     max_length = 100
     embed_size = 300
 

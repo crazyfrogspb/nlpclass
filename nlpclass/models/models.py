@@ -23,6 +23,7 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
+        #self.embedding.weight.data.uniform_(-1e-3, 1e-3)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -51,16 +52,14 @@ class EncoderRNN(nn.Module):
 
 class Attention(nn.Module):
     def __init__(self, hidden_size):
-        super(Attention, self).__init__()
+        super().__init__()
         self.hidden_size = hidden_size
-        self.attn = nn.Linear(self.hidden_size * 2, self.hidden_size)
-        self.v = nn.Parameter(torch.FloatTensor(1, self.hidden_size))
+        self.attn = nn.Linear(self.hidden_size, hidden_size)
 
     def forward(self, hidden, encoder_output):
-        energies = self.attn(
-            torch.cat((hidden.expand(*encoder_output.size()), encoder_output), 2))
-        energies = torch.bmm(energies, self.v.unsqueeze(
-            0).expand(*hidden.size()).transpose(1, 2)).squeeze(2)
+        energies = self.attn(encoder_output.view(-1, self.hidden_size))
+        energies = torch.bmm(energies.view(
+            *encoder_output.size()), hidden.transpose(1, 2)).squeeze(2)
 
         return F.softmax(energies, 1)
 
@@ -86,6 +85,7 @@ class DecoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
+        #self.embedding.weight.data.uniform_(-1e-3, 1e-3)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
@@ -177,7 +177,7 @@ class TranslationModel(nn.Module):
                 decoder_input = Variable(topi).squeeze()
                 decoder_input = decoder_input.to(model_config.device)
 
-            decoder_hidden.detach()
+            decoder_hidden = decoder_hidden.detach()
 
         return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous()
 

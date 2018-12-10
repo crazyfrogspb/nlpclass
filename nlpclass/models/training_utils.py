@@ -46,7 +46,7 @@ def load_data(language, subsample=1.0, batch_size=16):
             lines_en, lines_lang = zip(
                 *random.sample(list(zip(lines_en, lines_lang)), sample_size))
         if dataset_type == 'train':
-            load_embeddings = True
+            load_embeddings = False
         else:
             load_embeddings = False
         data[dataset_type] = TranslationDataset(prepareData(
@@ -73,7 +73,7 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=300):
+def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=500):
     epoch_loss = 0
     for i, batch in enumerate(tqdm(data_loaders['train'])):
         model.train()
