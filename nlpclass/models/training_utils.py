@@ -136,8 +136,12 @@ def train_model(language, network_type, attention,
         encoder = EncoderRNN(data['train'].input_lang.n_words,
                              embedding_size, hidden_size, num_layers_enc,
                              dropout, bidirectional)
+        if bidirectional:
+            multiplier = 2
+        else:
+            multiplier = 1
         decoder = DecoderRNN(data['train'].output_lang.n_words,
-                             embedding_size, hidden_size, num_layers_dec, attention)
+                             embedding_size, multiplier * hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
         encoder = None
         decoder = None

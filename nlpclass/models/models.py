@@ -121,7 +121,6 @@ class TranslationModel(nn.Module):
         batch_size = input_seq.size(0)
 
         encoded_input, encoder_hidden = self.encoder(input_seq, input_length)
-        print(encoder_hidden)
 
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
         context = None
