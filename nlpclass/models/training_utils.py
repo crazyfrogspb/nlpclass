@@ -1,4 +1,5 @@
 import os.path as osp
+import random
 from copy import deepcopy
 
 import mlflow
@@ -12,6 +13,7 @@ from tqdm import tqdm
 from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
                                       text_collate_func)
+from nlpclass.models.evaluation_utils import bleu_eval, output_to_translations
 from nlpclass.models.models import DecoderRNN, EncoderRNN, TranslationModel
 
 CURRENT_PATH = osp.dirname(osp.realpath(__file__))
@@ -34,13 +36,17 @@ def load_tokens(language, dataset_type):
     return lang_lines, en_lines
 
 
-def load_data(language, batch_size):
+def load_data(language, subsample=1.0, batch_size=16):
     data = {}
     data_loaders = {}
     for dataset_type in ['train', 'dev', 'test']:
         lines_en, lines_lang = load_tokens(language, dataset_type)
+        if subsample < 1.0:
+            sample_size = int(subsample * len(lines_en))
+            lines_en, lines_lang = zip(
+                *random.sample(list(zip(lines_en, lines_lang)), sample_size))
         data[dataset_type] = TranslationDataset(prepareData(
-            language, 'eng', lines_lang, lines_en))
+            'eng', language, lines_en, lines_lang))
         data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
                                                                  batch_size=batch_size,
                                                                  collate_fn=text_collate_func,
@@ -57,29 +63,45 @@ def load_data(language, batch_size):
     return data, data_loaders, max_length
 
 
-def train_epoch(model, optimizer, data, data_loaders):
-    model.train()
-    for batch in data_loaders['train']:
+def train_epoch(model, optimizer, data, data_loaders, log_frequency=1000):
+    epoch_loss = 0
+    for i, batch in enumerate(tqdm(data_loaders['train'])):
+        model.train()
+        optimizer.zero_grad()
         total_loss, _, _ = model(batch)
         total_loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
-                              model.parameters()), model_config.grad_norm)
+                               model.parameters()), model_config.grad_norm)
         optimizer.step()
+        epoch_loss += total_loss.item()
+    return epoch_loss / (i + 1)
 
+
+def finalize_run(best_model, best_bleu, best_loss):
+    mlflow.log_metric('best_loss', best_loss)
+    mlflow.log_metric('best_bleu', best_bleu)
+    mlflow.pytorch.log_model(best_model, 'models')
+
+
+def evaluate(model, data, data_loaders, dataset_type='dev'):
     model.eval()
     epoch_loss = 0
     with torch.no_grad():
-        for batch in data_loaders['val']:
+        original_strings = []
+        translated_strings = []
+        for i, batch in enumerate(data_loaders[dataset_type]):
             total_loss, _, _ = model(batch)
-            epoch_loss += total_loss.item() * \
-                batch['input'].size(0) / len(data['val'])
+            epoch_loss += (total_loss.item() *
+                           batch['input'].size(0) / len(data[dataset_type]))
+            original = output_to_translations(batch['target'], data['train'])
+            translations = output_to_translations(
+                model.greedy(batch), data['train'])
+            original_strings.extend(original)
+            translated_strings.extend(translations)
+        bleu = bleu_eval(original_strings, translated_strings)
+        model.train()
 
-    return epoch_loss
-
-
-def finalize_run(best_model, best_loss):
-    mlflow.log_metric('best_loss', best_loss)
-    mlflow.pytorch.log_model(best_model, 'models')
+    return epoch_loss, bleu
 
 
 def train_model(language, network_type, attention,
@@ -87,22 +109,25 @@ def train_model(language, network_type, attention,
                 dropout, bidirectional,
                 batch_size, learning_rate, optimizer, n_epochs, early_stopping,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
-                retrain=False):
+                subsample, retrain=False):
     training_parameters = locals()
-    data, data_loaders, max_length = load_data(language, batch_size)
+    data, data_loaders, max_length = load_data(language, subsample, batch_size)
 
     if network_type == 'recurrent':
         encoder = EncoderRNN(data['train'].input_lang.n_words,
                              embedding_size, hidden_size, num_layers_enc,
                              dropout, bidirectional)
+        if bidirectional:
+            multiplier = 2
+        else:
+            multiplier = 1
         decoder = DecoderRNN(data['train'].output_lang.n_words,
-                             embedding_size, hidden_size, num_layers_dec, attention)
+                             embedding_size, multiplier * hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
         encoder = None
         decoder = None
 
     model = TranslationModel(encoder, decoder,
-                             max_length=max_length,
                              teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)
 
     if optimizer == 'adam':
@@ -114,6 +139,7 @@ def train_model(language, network_type, attention,
     else:
         raise ValueError(f'Option {optimizer} is not supported for optimizer')
 
+    best_bleu = 0.0
     best_loss = np.inf
     early_counter = 0
     best_model = deepcopy(model)
@@ -124,18 +150,22 @@ def train_model(language, network_type, attention,
 
         for epoch in tqdm(range(n_epochs)):
             if early_counter >= early_stopping:
-                finalize_run(best_model, best_loss)
+                finalize_run(best_model, best_bleu, best_loss)
                 return best_model
 
-            epoch_loss = train_epoch(model, optimizer, data, data_loaders)
-            print(f'Current loss: {epoch_loss}')
-            mlflow.log_metric('eval_loss', epoch_loss)
+            train_loss = train_epoch(model, optimizer, data, data_loaders)
+            mlflow.log_metric('train_loss', train_loss)
 
-            if epoch_loss < best_loss:
-                best_loss = epoch_loss
+            val_loss, val_bleu = evaluate(model, data, data_loaders)
+            mlflow.log_metric('val_loss', val_loss)
+            mlflow.log_metric('val_bleu', val_bleu)
+
+            if val_bleu >= best_bleu:
+                best_loss = val_loss
+                best_bleu = val_bleu
                 best_model = deepcopy(model)
             else:
                 early_counter += 1
 
-        finalize_run(best_model, best_loss)
+        finalize_run(best_model, best_bleu, best_loss)
         return best_model

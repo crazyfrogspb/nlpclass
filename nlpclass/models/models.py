@@ -26,31 +26,19 @@ class EncoderRNN(nn.Module):
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
 
-    def forward(self, x, lengths):
-        batch_size, seq_len = x.size()
-
-        hidden = self.init_hidden(batch_size)
+    def forward(self, x, lengths, hidden=None):
         embed = self.embedding(x)
         packed = torch.nn.utils.rnn.pack_padded_sequence(
             embed, lengths, batch_first=True)
-        output, hidden = self.rnn(packed, hidden)
-        output, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            output, batch_first=True)
+        encoded_input, hidden = self.rnn(packed, hidden)
+        encoded_input, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            encoded_input, padding_value=model_config.PAD_token, batch_first=True)
 
         if self.bidirectional:
             hidden = torch.cat(
                 (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0)), 2)
 
-        return output, hidden
-
-    def init_hidden(self, batch_size):
-        if self.bidirectional:
-            multiplier = 2
-        else:
-            multiplier = 1
-        hidden = torch.randn(multiplier * self.num_layers, batch_size,
-                             self.hidden_size, device=model_config.device)
-        return hidden
+        return encoded_input, hidden
 
 
 class Attention(nn.Module):
@@ -105,43 +93,54 @@ class DecoderRNN(nn.Module):
             return output, hidden, context, weights
         else:
             output, hidden = self.rnn(embed, hidden)
-            output = F.log_softmax(self.out(output.squeeze(1)), 1)
+            output = F.log_softmax(self.out(output.squeeze(1)), dim=1)
             return output, hidden, context, encoder_output
 
-    def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_size, device=model_config.device)
 
-
-def calculate_loss(decoder_output, input_index, input_tokens, input_length):
-    mask = torch.LongTensor(np.repeat([input_index], decoder_output.size(0)))
+def calculate_loss(decoder_output, idx, target_tokens, target_length):
+    mask = torch.LongTensor(np.repeat([idx], decoder_output.size(0)))
     mask = Variable(mask).to(model_config.device)
-    mask = mask < input_length
+    mask = mask < target_length
 
     return -torch.gather(decoder_output, dim=1,
-                         index=input_tokens.unsqueeze(1)).squeeze() * mask.float()
+                         index=target_tokens.unsqueeze(1)).squeeze() * mask.float()
 
 
 class TranslationModel(nn.Module):
-    def __init__(self, encoder, decoder, max_length=100, teacher_forcing_ratio=1.0):
+    def __init__(self, encoder, decoder,
+                 teacher_forcing_ratio=1.0, beam_size=5, beam_alpha=1.0):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.max_length = max_length
+        self.max_length = model_config.max_length
         self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.beam_size = beam_size
+        self.beam_alpha = beam_alpha
+
+    def encode_sentence(self, input_seq, input_length):
+        batch_size = input_seq.size(0)
+
+        encoded_input, encoder_hidden = self.encoder(input_seq, input_length)
+
+        decoder_hidden = encoder_hidden[-1].unsqueeze(0)
+        context = None
+        if self.decoder.attention:
+            context = Variable(torch.zeros(encoded_input.size(
+                0), encoded_input.size(2))).unsqueeze(1).to(model_config.device)
+
+        decoder_input = Variable(torch.LongTensor(
+            [model_config.SOS_token] * batch_size)).to(model_config.device)
+
+        return encoded_input, decoder_hidden, decoder_input, context
 
     def forward(self, x):
         input_seq = x['input']
         target_seq = x['target']
         input_length = x['input_length']
-        batch_size = input_seq.size(0)
+        target_length = x['target_length']
 
-        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
-
-        decoder_hidden = encoder_hidden
-        context = None
-        if self.decoder.attention:
-            context = Variable(torch.zeros(encoder_output.size(
-                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+        encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
+            input_seq, input_length)
 
         total_loss = 0
 
@@ -150,43 +149,33 @@ class TranslationModel(nn.Module):
         else:
             use_teacher_forcing = False
 
-        decoder_input = Variable(torch.LongTensor(
-            [model_config.SOS_token] * batch_size)).to(model_config.device)
-
-        for input_idx in range(target_seq.size(1) - 1):
+        for idx in range(target_seq.size(1) - 1):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
 
-            loss = calculate_loss(decoder_output, input_idx,
-                                  target_seq[:, input_idx], input_length)
-            loss_sum = loss.sum()
-            if loss_sum > 0:
-                total_loss += loss_sum / torch.sum(loss > 0).float()
+            loss = calculate_loss(decoder_output, idx,
+                                  target_seq[:, idx], target_length)
+            total_loss += loss
 
             if use_teacher_forcing:
-                decoder_input = target_seq[:, input_idx]
+                decoder_input = target_seq[:, idx]
             else:
                 _, topi = decoder_output.data.topk(1)
-                decoder_input = Variable(torch.cat(topi))
+                decoder_input = Variable(topi).squeeze()
                 decoder_input = decoder_input.to(model_config.device)
 
-        return total_loss, decoder_output, decoder_hidden
+        total_loss /= target_length.float()
+
+        return total_loss.mean(), decoder_output, decoder_hidden
 
     def greedy(self, x):
         input_seq = x['input']
         input_length = x['input_length']
         batch_size = input_seq.size(0)
 
-        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
+        encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
+            input_seq, input_length)
 
-        decoder_hidden = encoder_hidden
-        context = None
-        if self.decoder.attention:
-            context = Variable(torch.zeros(encoder_output.size(
-                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
-
-        decoder_input = Variable(torch.LongTensor(
-            [model_config.SOS_token] * batch_size)).to(model_config.device)
         predictions = torch.LongTensor(
             [model_config.SOS_token] * batch_size).unsqueeze(1).to(model_config.device)
 
@@ -197,6 +186,8 @@ class TranslationModel(nn.Module):
             topv, topi = decoder_output.topk(1)
             predictions = torch.cat((predictions, topi), dim=1)
 
+            decoder_input = Variable(topi).squeeze().to(model_config.device)
+
             num_done = ((predictions == model_config.EOS_token).sum(
                 dim=1) > 0).sum().cpu().numpy()
             if num_done == batch_size:
@@ -204,15 +195,74 @@ class TranslationModel(nn.Module):
 
         return predictions
 
-    def beam(self, x):
+    def beam(self, decoder_input, decoder_hidden, encoder_output, context):
+        indices = []
+        probs = []
+
+        decoder_output, decoder_hidden, context, weights = self.decoder(
+            decoder_input, decoder_hidden, encoder_output, context)
+
+        topv, topi = decoder_output.topk(self.beam_size)
+
+        for x in range(self.beam_size):
+            indices.append(topi[0][x].item())
+            probs.append(topv[0][x].item())
+
+        return indices, probs, decoder_hidden, context
+
+    def beam_init(self, decoder_input, decoder_hidden, encoder_output, context):
+        beams_keep = [[] for i in range(self.beam_size)]
+
+        decoder_output, decoder_hidden, context, weights = self.decoder(
+            decoder_input, decoder_hidden, encoder_output, context)
+        topv, topi = decoder_output.topk(self.beam_size)
+
+        for x in range(self.beam_size):
+            beams_keep[x].append({'decoder_hidden': decoder_hidden,
+                                  'decoder_input': topi[:, x],
+                                  'loss': topv[:, x],
+                                  'context': context})
+
+        return beams_keep
+
+    def beam_step(self, beams_keep, step):
+        beams = [[] for i in range(self.beam_size ** 2)]
+        probs_vec = np.zeros(self.beam_size ** 2)
+
+        for beam_num, beam in enumerate(beams_keep):
+            decoder_output, decoder_hidden, context, weights = self.decoder(
+                beam['decoder_input'], beam['decoder_hidden'],
+                encoder_output, beam['context'])
+
+    def beam_search(self, x):
         input_seq = x['input']
         input_length = x['input_length']
         batch_size = input_seq.size(0)
 
-        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
+        encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
+            input_seq, input_length)
 
-        decoder_hidden = encoder_hidden
-        context = None
-        if self.decoder.attention:
-            context = Variable(torch.zeros(encoder_output.size(
-                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+        for idx in range(1, self.max_length):
+            beams, probs = self.beam_step(beams_keep, idx)
+            best_inds = np.argpartition(
+                probs, -self.beam_size)[-self.beam_size:]
+            diff = self.beam_size - len(beams_keep)
+            if diff > 0:
+                for beam in range(diff):
+                    beams_keep.append([])
+            for ind_num, ind in enumerate(best_inds):
+                beams_keep[ind_num] = beams[ind]
+
+            beam_copy = beams_keep.copy()
+            for beam in beam_copy:
+                all_words = [beam_node['decoder_input'] for beam_node in beam]
+                step_len = len(all_words)
+                if model_config.EOS_token in all_words:
+                    associated_prob = np.prod(
+                        np.array([beam_node['loss'] for beam_node in beam])) / step_len**self.beam_alpha
+                    final_sentences.append((all_words, associated_prob))
+                    beams_keep.remove(x)
+            if len(final_sentences) > self.beam_size:
+                final_probs = np.array([sentence[1]
+                                        for sentence in final_sentences])
+                return final_sentences[final_probs.argmax()][0]
