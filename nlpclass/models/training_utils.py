@@ -74,20 +74,21 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=1000):
+def train_epoch(model, optimizer, data, data_loaders, logging_freq=1000):
     epoch_loss = 0
     for i, batch in enumerate(data_loaders['train']):
         model.train()
         optimizer.zero_grad()
-        logits = model(batch)
-        loss = calc_loss(logits, batch['target'], criterion)
+        logits, loss = model(batch)
+        #loss = calc_loss(logits, batch['target'], criterion)
+        #print(total_loss, loss)
         loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
                                model.parameters()), model_config.grad_norm)
         optimizer.step()
         epoch_loss += loss.item()
         if i % logging_freq == 0:
-            val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
+            val_loss, val_bleu = evaluate(model, data, data_loaders)
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
@@ -104,7 +105,7 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.pytorch.log_model(best_model, 'models')
 
 
-def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch=100, greedy=True):
+def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
     model.eval()
     epoch_loss = 0
     with torch.no_grad():
@@ -113,8 +114,8 @@ def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch
         for i, batch in enumerate(data_loaders[dataset_type]):
             if i > max_batch:
                 break
-            logits = model(batch)
-            epoch_loss += calc_loss(logits, batch['target'], criterion).item()
+            logits, loss = model(batch)
+            epoch_loss += loss.item()
             original = output_to_translations(batch['target'], data['train'])
             if greedy:
                 translations = output_to_translations(
@@ -171,7 +172,6 @@ def train_model(language, network_type, attention,
 
     weight = torch.ones(model.decoder.output_size).to(model_config.device)
     weight[model_config.PAD_token] = 0
-    criterion = torch.nn.CrossEntropyLoss(weight)
 
     best_bleu = 0.0
     best_loss = np.inf
@@ -189,15 +189,15 @@ def train_model(language, network_type, attention,
                 return best_model
 
             train_loss = train_epoch(
-                model, optimizer, data, data_loaders, criterion)
+                model, optimizer, data, data_loaders)
             mlflow.log_metric('train_loss_epoch', train_loss)
 
             val_loss, val_bleu_greedy = evaluate(
-                model, data, data_loaders, criterion)
+                model, data, data_loaders)
             mlflow.log_metric('val_loss_epoch', val_loss)
             mlflow.log_metric('val_bleu_greedy', val_bleu_greedy)
             val_loss, val_bleu_beam = evaluate(
-                model, data, data_loaders, criterion, greedy=False)
+                model, data, data_loaders, greedy=False)
             mlflow.log_metric('val_bleu_beam', val_bleu_beam)
 
             val_bleu = max(val_bleu_greedy, val_bleu_beam)

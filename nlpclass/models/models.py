@@ -1,12 +1,12 @@
 import random
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from nlpclass.config import model_config
 from torch.autograd import Variable
+
+from nlpclass.config import model_config
 
 
 class EncoderCNN(nn.Module):
@@ -134,10 +134,13 @@ class DecoderRNN(nn.Module):
             return output, hidden, context, encoder_output
 
 
-def calc_loss(logits, target, criterion):
-    logits_flat = logits.view(-1, logits.size(-1))
-    target_flat = target.view(-1, 1).squeeze()
-    return criterion(logits_flat, target_flat)
+def calculate_loss(decoder_output, idx, target_tokens, target_length):
+    mask = torch.LongTensor(np.repeat([idx], decoder_output.size(0)))
+    mask = Variable(mask).to(model_config.device)
+    mask = mask < target_length
+    loss = -decoder_output.gather(1, target_tokens.view(-1, 1))
+    masked_loss = loss * mask.unsqueeze(1).float()
+    return masked_loss.squeeze(1)
 
 
 class TranslationModel(nn.Module):
@@ -186,12 +189,18 @@ class TranslationModel(nn.Module):
         else:
             use_teacher_forcing = False
 
+        total_loss = 0
+
         decoder_outputs = Variable(torch.zeros(
             model_config.max_length + 1, batch_size, self.decoder.output_size)).to(model_config.device)
 
         for idx in range(target_seq.size(1) - 1):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
+
+            loss = calculate_loss(decoder_output, idx,
+                                  target_seq[:, idx], target_length)
+            total_loss += loss
 
             decoder_outputs[idx] = decoder_output
 
@@ -203,8 +212,9 @@ class TranslationModel(nn.Module):
                     1).to(model_config.device)
 
             decoder_hidden = decoder_hidden.detach()
+        total_loss /= target_length.float()
 
-        return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous()
+        return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous(), total_loss.mean()
 
     def greedy(self, x):
         input_seq = x['input']
