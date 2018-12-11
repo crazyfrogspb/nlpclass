@@ -201,8 +201,7 @@ class TranslationModel(nn.Module):
                 decoder_input = target_seq[:, idx]
             else:
                 _, topi = decoder_output.data.topk(1)
-                decoder_input = Variable(topi).squeeze()
-                decoder_input = decoder_input.to(model_config.device)
+                decoder_input = Variable(topi).squeeze(1).to(model_config.device)
 
             decoder_hidden = decoder_hidden.detach()
 
