@@ -9,40 +9,6 @@ from torch.autograd import Variable
 from nlpclass.config import model_config
 
 
-class EncoderCNN(nn.Module):
-    def __init__(self, input_size, num_layers=2,
-                 embedding_size=100, hidden_size=64, kernel_size=7):
-        super().__init__()
-        self.input_size = input_size
-        self.embedding_size = embedding_size
-        self.hidden_size = hidden_size
-        self.kernel_size = kernel_size
-        self.padding = kernel_size // 2
-        self.num_layers = num_layers
-
-        self.embedding = nn.Embedding(
-            self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-
-        self.conv_encoder = nn.ModuleList([nn.Conv1d(
-            self.embedding_size, self.hidden_size, kernel_size=self.kernel_size, padding=self.padding)])
-        for i in range(1, self.num_layers):
-            self.conv_encoder.append(nn.Conv1d(
-                self.hidden_size, self.hidden_size, kernel_size=self.kernel_size, padding=self.padding))
-
-    def forward(self, x, lengths):
-        batch_size, seq_len = x.size()
-        hidden = self.embedding(x)
-
-        for layer in self.conv_encoder:
-            hidden = layer(hidden.transpose(1, 2)).transpose(1, 2)
-            hidden = F.relu(hidden.contiguous().view(-1, hidden.size(-1))).view(
-                batch_size, seq_len, hidden.size(-1))
-
-        hidden = torch.max(hidden, dim=1)[0]
-
-        return None, hidden
-
-
 class EncoderRNN(nn.Module):
     def __init__(self, input_size,
                  embedding_size=100, hidden_size=64, num_layers=1,
@@ -55,9 +21,7 @@ class EncoderRNN(nn.Module):
         self.dropout = dropout
         self.bidirectional = bidirectional
 
-        self.embedding = nn.Embedding(
-            self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        self.embedding = nn.Embedding(self.input_size, self.embedding_size)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -79,15 +43,16 @@ class EncoderRNN(nn.Module):
 
 class Attention(nn.Module):
     def __init__(self, hidden_size):
-        super().__init__()
+        super(Attention, self).__init__()
         self.hidden_size = hidden_size
-        self.attn = nn.Linear(self.hidden_size, hidden_size)
+        self.attn = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        self.v = nn.Parameter(torch.FloatTensor(1, self.hidden_size))
 
     def forward(self, hidden, encoder_output):
-        encoder_output = encoder_output.contiguous()
-        energies = self.attn(encoder_output.view(-1, self.hidden_size))
-        energies = torch.bmm(energies.view(
-            *encoder_output.size()), hidden.transpose(1, 2)).squeeze(2)
+        energies = self.attn(
+            torch.cat((hidden.expand(*encoder_output.size()), encoder_output), 2))
+        energies = torch.bmm(energies, self.v.unsqueeze(
+            0).expand(*hidden.size()).transpose(1, 2)).squeeze(2)
 
         return F.softmax(energies, 1)
 
@@ -111,9 +76,7 @@ class DecoderRNN(nn.Module):
             rnn_input_size = self.embedding_size
             self.out = nn.Linear(self.hidden_size, self.output_size)
 
-        self.embedding = nn.Embedding(
-            self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        self.embedding = nn.Embedding(self.output_size, self.embedding_size)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
@@ -142,7 +105,7 @@ def calc_loss(logits, target, criterion):
 
 class TranslationModel(nn.Module):
     def __init__(self, encoder, decoder,
-                 teacher_forcing_ratio=1.0, beam_size=5, beam_alpha=1.0):
+                 teacher_forcing_ratio=1.0, beam_size=2, beam_alpha=1.0):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -154,22 +117,20 @@ class TranslationModel(nn.Module):
     def encode_sentence(self, input_seq, input_length):
         batch_size = input_seq.size(0)
 
-        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
-
-        if len(encoder_hidden.size()) == 2:
-            encoder_hidden = encoder_hidden.unsqueeze(0)
+        encoded_input, encoder_hidden = self.encoder(input_seq, input_length)
 
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
-
+        
+        
         context = None
         if self.decoder.attention:
-            context = Variable(torch.zeros(encoder_output.size(
-                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+            context = Variable(torch.zeros(encoded_input.size(
+                0), encoded_input.size(2))).unsqueeze(1).to(model_config.device)
 
         decoder_input = Variable(torch.LongTensor(
             [model_config.SOS_token] * batch_size)).to(model_config.device)
 
-        return encoder_output, decoder_hidden, decoder_input, context
+        return encoded_input, decoder_hidden, decoder_input, context
 
     def forward(self, x):
         input_seq = x['input']
@@ -189,7 +150,7 @@ class TranslationModel(nn.Module):
         decoder_outputs = Variable(torch.zeros(
             model_config.max_length + 1, batch_size, self.decoder.output_size)).to(model_config.device)
 
-        for idx in range(target_seq.size(1) - 1):
+        for idx in range(target_seq.size(1)-1):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
 
@@ -202,7 +163,7 @@ class TranslationModel(nn.Module):
                 decoder_input = Variable(topi).squeeze()
                 decoder_input = decoder_input.to(model_config.device)
 
-            decoder_hidden = decoder_hidden.detach()
+            decoder_hidden.detach()
 
         return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous()
 
@@ -213,27 +174,24 @@ class TranslationModel(nn.Module):
 
         encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
             input_seq, input_length)
-
+        
         predictions = torch.LongTensor(
             [model_config.SOS_token] * batch_size).unsqueeze(1).to(model_config.device)
-
+        
         for input_idx in range(self.max_length):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
-
+            
             topv, topi = decoder_output.topk(1)
-
             predictions = torch.cat((predictions, topi), dim=1)
 
             decoder_input = Variable(topi).squeeze().to(model_config.device)
-
+       
         return predictions
 
     def beam(self, decoder_input, decoder_hidden, encoder_output, context):
-        indices = []
-        probs = []
         data = []
-
+        
         decoder_input = decoder_input.unsqueeze(dim=0)
 
         decoder_output, decoder_hidden, context, weights = self.decoder(
@@ -242,16 +200,15 @@ class TranslationModel(nn.Module):
         topv, topi = decoder_output.topk(self.beam_size)
 
         for x in range(self.beam_size):
-            # indices.append(topi[0][x].item())
-            probs.append(topv[0][x].item())
+            
             data.append({'decoder_hidden': decoder_hidden,
-                         'decoder_input': topi[0, x],
-                         'decoder_input_num': topi[0, x].item(),
-                         'value': topv[0, x],
-                         'value_num': topv[0, x].item(),
-                         'context': context})
+                                  'decoder_input': topi[0, x],
+                                  'decoder_input_num': topi[0, x].item(),
+                                  'value': topv[0, x],
+                                  'value_num': topv[0, x].item(),
+                                  'context': context})
 
-        # return indices, probs, data
+        #return indices, probs, data
         return data
 
     def beams_init(self, decoder_input, decoder_hidden, encoder_output, context):
@@ -262,6 +219,7 @@ class TranslationModel(nn.Module):
         topv, topi = decoder_output.topk(self.beam_size)
 
         for x in range(self.beam_size):
+           
             beams_keep[x].append({'decoder_hidden': decoder_hidden,
                                   'decoder_input': topi[0, x],
                                   'decoder_input_num': topi[0, x].item(),
@@ -277,64 +235,57 @@ class TranslationModel(nn.Module):
 
         for beam_num, beam_it in enumerate(beams_keep):
             data = \
-                self.beam(beam_it[0]['decoder_input'], beam_it[0]
-                          ['decoder_hidden'], enocoder_output, beam_it[0]['context'])
-
-            for sub_beam in data:
-                # getting the probability for the beams being explored
-                beam_prob = 1
-                for z in beam_it:
-                    beam_prob = beam_prob * np.exp(z['value_num'])
-
-                # saving them
-                for z, q in enumerate(data):
-                    probs_vec[z + beam_num * self.beam_size] = beam_prob * \
-                        np.exp(q['value_num']) / step**self.beam_alpha
-
-                # saving all the histories
-                for t in range(self.beam_size):
-
-                    beams[t + beam_num * self.beam_size] = beam_it.copy()
-                    beams[t + beam_num * self.beam_size].append(sub_beam)
+            self.beam(beam_it[0]['decoder_input'], beam_it[0]['decoder_hidden'], enocoder_output, beam_it[0]['context'])
+            
+            beam_prob = 1
+            for z in beam_it:
+                beam_prob = beam_prob*np.exp(z['value_num'])
+            
+            for data_num, sub_beam in enumerate(data):
+        #getting the probability for the beams being explored
+                probs_vec[data_num + beam_num*self.beam_size] = beam_prob*np.exp(sub_beam['value_num'])/step**self.beam_alpha
+                beams[data_num + beam_num*self.beam_size] = beam_it.copy()
+                beams[data_num + beam_num*self.beam_size].append(sub_beam)
 
         return beams, probs_vec
 
-    def ind_beam(self, beams_keep, enocoder_output_one):
+
+            
+    def ind_beam(self,beams_keep, enocoder_output):
         final_sentences = []
         for idx in range(1, self.max_length):
 
-            beams, prob_vec = self.beam_step(
-                beams_keep, idx, enocoder_output_one)
-
-            # finding the best beams
+            beams, prob_vec = self.beam_step(beams_keep, idx, enocoder_output)     
+            
+            #finding the best beams
             best_inds = np.argpartition(
                 prob_vec, -self.beam_size)[-self.beam_size:]
-
-            # this is done just in case beams keep is shortened
+            
+            #this is done just in case beams keep is shortened
             diff = self.beam_size - len(beams_keep)
             if diff > 0:
                 for beam in range(diff):
                     beams_keep.append([])
-
+                    
             for ind_num, ind in enumerate(best_inds):
+                
                 beams_keep[ind_num] = beams[ind]
-
+              
             beam_copy = beams_keep.copy()
-
+            
             for beam in beam_copy:
-                all_words = [beam_node['decoder_input_num']
-                             for beam_node in beam]
-
+                all_words = [beam_node['decoder_input_num'] for beam_node in beam]
+                
                 step_len = len(all_words)
-                if model_config.EOS_token in all_words or idx == self.max_length - 1:
-
+                if model_config.EOS_token in all_words or idx ==  self.max_length-1:
+                    
                     associated_prob = np.prod(
                         np.array([beam_node['value_num'] for beam_node in beam])) / step_len**self.beam_alpha
                     final_sentences.append((all_words, associated_prob))
                     beams_keep.remove(beam)
-
+                    
             if len(final_sentences) >= self.beam_size:
-
+             
                 final_probs = np.array([sentence[1]
                                         for sentence in final_sentences])
                 return final_sentences[final_probs.argmax()][0]
@@ -347,25 +298,29 @@ class TranslationModel(nn.Module):
         encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
             input_seq, input_length)
 
-        # predictions = torch.LongTensor(
+        #predictions = torch.LongTensor(
         #   [model_config.SOS_token] * batch_size, [model_config.SOS_token]*self.max_length).unsqueeze(1).to(model_config.device)
         predictions = torch.zeros(batch_size, self.max_length + 1)
-
+        
         for sentence in range(batch_size):
-
-            enocoder_output_one = encoder_output[sentence, :, :].unsqueeze(
-                dim=0)
-            decoder_hidden_one = decoder_hidden[:, sentence, :].unsqueeze(dim=1)
+            
+            enocoder_output_one = encoder_output[sentence,:,:].unsqueeze(dim=0)
+            decoder_hidden_one = decoder_hidden[:,sentence,:].unsqueeze(dim=1)
             decoder_input_one = decoder_input[sentence].unsqueeze(dim=0)
-            context_one = context[sentence, :, :].unsqueeze(dim=0)
-
-            beams_keep = self.beams_init(decoder_input_one,
-                                         decoder_hidden_one, enocoder_output_one, context_one)
+            context_one = context[sentence,:,:].unsqueeze(dim=0)
+            
+            beams_keep = self.beams_init(decoder_input_one,\
+                                    decoder_hidden_one,enocoder_output_one,context_one)
 
             predict_sen = self.ind_beam(beams_keep, enocoder_output_one)
             pred_len = len(predict_sen)
             predict_sen = torch.tensor(predict_sen)
-
-            predictions[sentence, 1:pred_len + 1] = predict_sen
-
+            
+            
+            predictions[sentence,1:pred_len+1] = predict_sen
+        
         return predictions
+            
+            
+            
+
