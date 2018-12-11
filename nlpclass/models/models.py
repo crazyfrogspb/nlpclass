@@ -9,6 +9,40 @@ from torch.autograd import Variable
 from nlpclass.config import model_config
 
 
+class EncoderCNN(nn.Module):
+    def __init__(self, input_size, num_layers=2,
+                 embedding_size=100, hidden_size=64, kernel_size=3):
+        super().__init__()
+        self.input_size = input_size
+        self.embedding_size = embedding_size
+        self.hidden_size = hidden_size
+        self.kernel_size = kernel_size
+        self.padding = kernel_size // 2
+        self.num_layers = num_layers
+
+        self.embedding = nn.Embedding(
+            self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
+
+        self.conv_encoder = nn.ModuleList([nn.Conv1d(
+            self.embedding_size, self.hidden_size, kernel_size=self.kernel_size, padding=self.padding)])
+        for i in range(1, self.num_layers):
+            self.conv_encoder.append(nn.Conv1d(
+                self.hidden_size, self.hidden_size, kernel_size=self.kernel_size, padding=self.padding))
+
+    def forward(self, x, lengths):
+        batch_size, seq_len = x.size()
+        hidden = self.embedding(x)
+
+        for layer in self.conv_encoder:
+            hidden = layer(hidden.transpose(1, 2)).transpose(1, 2)
+            hidden = F.relu(hidden.contiguous().view(-1, hidden.size(-1))).view(
+                batch_size, seq_len, hidden.size(-1))
+
+        hidden = torch.max(hidden, dim=1)[0]
+
+        return None, hidden
+
+
 class EncoderRNN(nn.Module):
     def __init__(self, input_size,
                  embedding_size=100, hidden_size=64, num_layers=1,
@@ -23,7 +57,7 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        #self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -79,7 +113,7 @@ class DecoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        #self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
@@ -120,18 +154,22 @@ class TranslationModel(nn.Module):
     def encode_sentence(self, input_seq, input_length):
         batch_size = input_seq.size(0)
 
-        encoded_input, encoder_hidden = self.encoder(input_seq, input_length)
+        encoder_output, encoder_hidden = self.encoder(input_seq, input_length)
 
+        if len(encoder_hidden.size()) == 2:
+            encoder_hidden = encoder_hidden.unsqueeze(0)
+            
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
+
         context = None
         if self.decoder.attention:
-            context = Variable(torch.zeros(encoded_input.size(
-                0), encoded_input.size(2))).unsqueeze(1).to(model_config.device)
+            context = Variable(torch.zeros(encoder_output.size(
+                0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
 
         decoder_input = Variable(torch.LongTensor(
             [model_config.SOS_token] * batch_size)).to(model_config.device)
 
-        return encoded_input, decoder_hidden, decoder_input, context
+        return encoder_output, decoder_hidden, decoder_input, context
 
     def forward(self, x):
         input_seq = x['input']

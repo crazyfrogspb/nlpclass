@@ -1,5 +1,6 @@
 import os.path as osp
 import random
+import warnings
 from copy import deepcopy
 
 import mlflow
@@ -14,7 +15,8 @@ from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
                                       text_collate_func)
 from nlpclass.models.evaluation_utils import bleu_eval, output_to_translations
-from nlpclass.models.models import DecoderRNN, EncoderRNN, TranslationModel
+from nlpclass.models.models import (DecoderRNN, EncoderCNN, EncoderRNN,
+                                    TranslationModel)
 
 CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
@@ -145,8 +147,12 @@ def train_model(language, network_type, attention,
         decoder = DecoderRNN(data['train'].output_lang.n_words,
                              embedding_size, multiplier * hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
-        encoder = None
-        decoder = None
+        encoder = EncoderCNN(
+            data['train'].input_lang.n_words, embedding_size, hidden_size, num_layers_enc)
+        if attention:
+            warnings.warn('Attention is not supported for CNN encoder')
+        decoder = DecoderRNN(data['train'].output_lang.n_words,
+                             embedding_size, hidden_size, num_layers_dec, attention=False)
 
     model = TranslationModel(encoder, decoder,
                              teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)
@@ -178,13 +184,10 @@ def train_model(language, network_type, attention,
                 finalize_run(best_model, best_bleu, best_loss)
                 return best_model
 
-            train_loss = train_epoch(
-                model, optimizer, data, data_loaders, criterion)
-            mlflow.log_metric('train_loss', train_loss)
 
             val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
-            mlflow.log_metric('val_loss', val_loss)
-            mlflow.log_metric('val_bleu', val_bleu)
+            mlflow.log_metric('val_loss_epoch', val_loss)
+            mlflow.log_metric('val_bleu_epoch', val_bleu)
 
             if val_bleu >= best_bleu:
                 best_loss = val_loss
