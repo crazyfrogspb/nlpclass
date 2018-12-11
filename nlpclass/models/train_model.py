@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--embedding_size', type=int, default=256)
     parser.add_argument('--hidden_size', type=int, default=256)
-    parser.add_argument('--num_layers_enc', type=int, default=1)
+    parser.add_argument('--num_layers_enc', type=int, default=2)
     parser.add_argument('--num_layers_dec', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--bidirectional', action='store_true')
