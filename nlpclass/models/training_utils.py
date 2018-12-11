@@ -91,7 +91,7 @@ def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=10
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
-            #train_loss, train_bleu = evaluate(
+            # train_loss, train_bleu = evaluate(
             #    model, data, data_loaders, criterion, dataset_type='train')
             #mlflow.log_metric('train_loss', train_loss)
             #mlflow.log_metric('train_bleu', train_bleu)
@@ -190,6 +190,7 @@ def train_model(language, network_type, attention,
 
             train_loss = train_epoch(
                 model, optimizer, data, data_loaders, criterion)
+            mlflow.log_metric('train_loss_epoch', train_loss)
 
             val_loss, val_bleu_greedy = evaluate(
                 model, data, data_loaders, criterion)
