@@ -15,11 +15,11 @@ if __name__ == '__main__':
     parser.add_argument('--network_type', type=str, default='recurrent')
     parser.add_argument('--attention', action='store_true')
 
-    parser.add_argument('--embedding_size', type=int, default=100)
-    parser.add_argument('--hidden_size', type=int, default=128)
+    parser.add_argument('--embedding_size', type=int, default=256)
+    parser.add_argument('--hidden_size', type=int, default=256)
     parser.add_argument('--num_layers_enc', type=int, default=1)
     parser.add_argument('--num_layers_dec', type=int, default=1)
-    parser.add_argument('--dropout', type=float, default=0.0)
+    parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--bidirectional', action='store_true')
 
     parser.add_argument('--batch_size', type=int, default=24)
