@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_layers_dec', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--bidirectional', action='store_true')
-    parser.add_arguments('--kernel_size', type=int, default=7)
+    parser.add_argument('--kernel_size', type=int, default=7)
 
     parser.add_argument('--batch_size', type=int, default=24)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
