@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5)
 
     parser.add_argument('--beam_search', action='store_true')
-    parser.add_argument('--beam_size', type=int, default=5)
+    parser.add_argument('--beam_size', type=int, default=3)
     parser.add_argument('--beam_alpha', type=float, default=1.0)
 
     parser.add_argument('--subsample', type=float, default=1.0)

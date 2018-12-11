@@ -91,10 +91,10 @@ def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=10
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
-            train_loss, train_bleu = evaluate(
-                model, data, data_loaders, criterion, dataset_type='train')
-            mlflow.log_metric('train_loss', train_loss)
-            mlflow.log_metric('train_bleu', train_bleu)
+            #train_loss, train_bleu = evaluate(
+            #    model, data, data_loaders, criterion, dataset_type='train')
+            #mlflow.log_metric('train_loss', train_loss)
+            #mlflow.log_metric('train_bleu', train_bleu)
     return epoch_loss / (i + 1)
 
 
@@ -104,7 +104,7 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.pytorch.log_model(best_model, 'models')
 
 
-def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch=100):
+def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch=100, greedy=True):
     model.eval()
     epoch_loss = 0
     with torch.no_grad():
@@ -116,8 +116,12 @@ def evaluate(model, data, data_loaders, criterion, dataset_type='dev', max_batch
             logits = model(batch)
             epoch_loss += calc_loss(logits, batch['target'], criterion).item()
             original = output_to_translations(batch['target'], data['train'])
-            translations = output_to_translations(
-                model.greedy(batch), data['train'])
+            if greedy:
+                translations = output_to_translations(
+                    model.greedy(batch), data['train'])
+            else:
+                translations = output_to_translations(
+                    model.beam_search(batch), data['train'])
             original_strings.extend(original)
             translated_strings.extend(translations)
         bleu = bleu_eval(original_strings, translated_strings)
@@ -187,9 +191,15 @@ def train_model(language, network_type, attention,
             train_loss = train_epoch(
                 model, optimizer, data, data_loaders, criterion)
 
-            val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
+            val_loss, val_bleu_greedy = evaluate(
+                model, data, data_loaders, criterion)
             mlflow.log_metric('val_loss_epoch', val_loss)
-            mlflow.log_metric('val_bleu_epoch', val_bleu)
+            mlflow.log_metric('val_bleu_greedy', val_bleu_greedy)
+            val_loss, val_bleu_beam = evaluate(
+                model, data, data_loaders, criterion, greedy=False)
+            mlflow.log_metric('val_bleu_beam', val_bleu_beam)
+
+            val_bleu = max(val_bleu_greedy, val_bleu_beam)
 
             if val_bleu >= best_bleu:
                 best_loss = val_loss

@@ -199,7 +199,8 @@ class TranslationModel(nn.Module):
                 decoder_input = target_seq[:, idx]
             else:
                 _, topi = decoder_output.data.topk(1)
-                decoder_input = Variable(topi).squeeze(1).to(model_config.device)
+                decoder_input = Variable(topi).squeeze(
+                    1).to(model_config.device)
 
             decoder_hidden = decoder_hidden.detach()
 
@@ -256,9 +257,7 @@ class TranslationModel(nn.Module):
         decoder_output, decoder_hidden, context, weights = self.decoder(
             decoder_input, decoder_hidden, encoder_output, context)
         topv, topi = decoder_output.topk(self.beam_size)
-
         for x in range(self.beam_size):
-
             beams_keep[x].append({'decoder_hidden': decoder_hidden,
                                   'decoder_input': topi[0, x],
                                   'decoder_input_num': topi[0, x].item(),
@@ -274,8 +273,8 @@ class TranslationModel(nn.Module):
 
         for beam_num, beam_it in enumerate(beams_keep):
             data = \
-                self.beam(beam_it[0]['decoder_input'], beam_it[0]
-                          ['decoder_hidden'], enocoder_output, beam_it[0]['context'])
+                self.beam(beam_it[-1]['decoder_input'], beam_it[-1]
+                          ['decoder_hidden'], enocoder_output, beam_it[-1]['context'])
 
             beam_prob = 1
             for z in beam_it:
@@ -307,7 +306,6 @@ class TranslationModel(nn.Module):
                     beams_keep.append([])
 
             for ind_num, ind in enumerate(best_inds):
-
                 beams_keep[ind_num] = beams[ind]
 
             beam_copy = beams_keep.copy()
@@ -318,9 +316,8 @@ class TranslationModel(nn.Module):
 
                 step_len = len(all_words)
                 if model_config.EOS_token in all_words or idx == self.max_length - 1:
-
                     associated_prob = np.prod(
-                        np.array([beam_node['value_num'] for beam_node in beam])) / step_len**self.beam_alpha
+                        np.array([np.exp(beam_node['value_num']) for beam_node in beam])) / step_len**self.beam_alpha
                     final_sentences.append((all_words, associated_prob))
                     beams_keep.remove(beam)
 
