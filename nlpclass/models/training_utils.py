@@ -50,8 +50,14 @@ def load_data(language, subsample=1.0, batch_size=16):
             load_embeddings = False
         else:
             load_embeddings = False
-        data[dataset_type] = TranslationDataset(prepareData(
-            'eng', language, lines_en, lines_lang, load_embeddings=load_embeddings))
+        data_dict = prepareData('eng', language, lines_en,
+                                lines_lang, load_embeddings=load_embeddings)
+        if dataset_type == 'train':
+            data[dataset_type] = TranslationDataset(
+                data_dict['input_lang'], data_dict['output_lang'], data_dict['pairs'])
+        else:
+            data[dataset_type] = TranslationDataset(
+                data['train'].input_lang, data['train'].output_lang, data_dict['pairs'])
         data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
                                                                  batch_size=batch_size,
                                                                  collate_fn=text_collate_func,

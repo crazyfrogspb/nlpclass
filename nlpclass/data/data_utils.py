@@ -16,6 +16,7 @@ DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
 class Lang:
     def __init__(self, name):
         self.name = name
+        self.min_count = model_config.min_count
         self.word2index = {"SOS": model_config.SOS_token,
                            "EOS": model_config.EOS_token,
                            "PAD": model_config.PAD_token,
@@ -41,6 +42,27 @@ class Lang:
             self.n_words += 1
         else:
             self.word2count[word] += 1
+
+    def trim(self):
+        keep_words = []
+        for word, count in self.word2count.items():
+            if count >= self.min_count:
+                keep_words.append((word, count))
+
+        self.word2index = {"SOS": model_config.SOS_token,
+                           "EOS": model_config.EOS_token,
+                           "PAD": model_config.PAD_token,
+                           "UNK": model_config.UNK_token}
+        self.word2count = {}
+        self.index2word = {model_config.SOS_token: "SOS",
+                           model_config.EOS_token: "EOS",
+                           model_config.PAD_token: "PAD",
+                           model_config.UNK_token: "UNK"}
+        self.n_words = 4  # Count SOS and EOS
+
+        for word, count in keep_words:
+            self.addWord(word)
+            self.word2count[word] = count
 
     def load_embeddings(self):
         self.embeddings = np.zeros((self.n_words, model_config.embed_size))
@@ -105,21 +127,24 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False, l
     if load_embeddings:
         input_lang.load_embeddings()
         output_lang.load_embeddings()
+
+    input_lang.trim()
     return {'input_lang': input_lang, 'output_lang': output_lang, 'pairs': pairs}
 
 
 def indexesFromSentence(lang, sentence):
     tokens = sentence.split(' ')[:model_config.max_length]
-    indices = [lang.word2index[word] for word in tokens]
+    indices = [lang.word2index.get(word, model_config.UNK_token)
+               for word in tokens]
     indices.append(model_config.EOS_token)
     return indices
 
 
 class TranslationDataset(torch.utils.data.Dataset):
-    def __init__(self, data):
-        self.input_lang = data['input_lang']
-        self.output_lang = data['output_lang']
-        self.pairs = data['pairs']
+    def __init__(self, input_lang, output_lang, pairs):
+        self.input_lang = input_lang
+        self.output_lang = output_lang
+        self.pairs = pairs
 
     def __len__(self):
         return len(self.pairs)
