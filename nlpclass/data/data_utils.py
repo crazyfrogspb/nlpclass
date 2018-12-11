@@ -129,6 +129,7 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False, l
         output_lang.load_embeddings()
 
     input_lang.trim()
+
     return {'input_lang': input_lang, 'output_lang': output_lang, 'pairs': pairs}
 
 

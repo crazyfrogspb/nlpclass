@@ -17,18 +17,18 @@ if __name__ == '__main__':
 
     parser.add_argument('--embedding_size', type=int, default=256)
     parser.add_argument('--hidden_size', type=int, default=256)
-    parser.add_argument('--num_layers_enc', type=int, default=2)
+    parser.add_argument('--num_layers_enc', type=int, default=1)
     parser.add_argument('--num_layers_dec', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--bidirectional', action='store_true')
     parser.add_argument('--kernel_size', type=int, default=7)
 
     parser.add_argument('--batch_size', type=int, default=24)
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--optimizer', type=str, default='adam')
     parser.add_argument('--n_epochs', type=int, default=25)
     parser.add_argument('--early_stopping', type=int, default=3)
-    parser.add_argument('--teacher_forcing_ratio', type=float, default=0.5)
+    parser.add_argument('--teacher_forcing_ratio', type=float, default=0.75)
 
     parser.add_argument('--beam_search', action='store_true')
     parser.add_argument('--beam_size', type=int, default=3)
