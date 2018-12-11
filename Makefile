@@ -89,11 +89,11 @@ train_model_test:
 	python nlpclass/models/train_model.py vi --subsample 0.15 --n_epochs 3 --dropout 0.2
 
 train_model:
-	export MLFLOW_EXPERIMENT_ID=0 && \
+	export MLFLOW_EXPERIMENT_ID=2 && \
 	python nlpclass/models/train_model.py vi --bidirectional --attention && \
 	python nlpclass/models/train_model.py vi --bidirectional && \
 	python nlpclass/models/train_model.py vi --attention && \
-	python nlpclass/models/train_model.py vi --bidirectional --attention --teacher_forcing_ratio 1.0 && \
+	python nlpclass/models/train_model.py vi --bidirectional --attention --teacher_forcing_ratio 0.5 && \
 	python nlpclass/models/train_model.py vi --bidirectional --attention --teacher_forcing_ratio 0.0
 
 #################################################################################
