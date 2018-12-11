@@ -118,9 +118,7 @@ class DecoderRNN(nn.Module):
                           self.num_layers, batch_first=True)
 
     def forward(self, input, hidden, encoder_output=None, context=None):
-        print(input, input.size())
         embed = self.embedding(input).unsqueeze(1)
-        print(embed.size(), context.size())
 
         if self.attention:
             embed = torch.cat((embed, context), 2)
@@ -299,7 +297,6 @@ class TranslationModel(nn.Module):
             beams, prob_vec = self.beam_step(beams_keep, idx, enocoder_output)
 
             # finding the best beams
-            print(prob_vec)
             best_inds = np.argpartition(
                 prob_vec, -self.beam_size)[-self.beam_size:]
 
