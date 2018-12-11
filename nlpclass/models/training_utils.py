@@ -184,6 +184,9 @@ def train_model(language, network_type, attention,
                 finalize_run(best_model, best_bleu, best_loss)
                 return best_model
 
+            train_loss = train_epoch(
+                model, optimizer, data, data_loaders, criterion)
+
             val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
             mlflow.log_metric('val_loss_epoch', val_loss)
             mlflow.log_metric('val_bleu_epoch', val_bleu)
