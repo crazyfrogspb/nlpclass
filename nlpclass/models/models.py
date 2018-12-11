@@ -81,7 +81,7 @@ class Attention(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.hidden_size = hidden_size
-        self.attn = nn.Linear(self.hidden_size, hidden_size)
+        self.attn = nn.Linear(self.hidden_size, self.hidden_size)
 
     def forward(self, hidden, encoder_output):
         encoder_output = encoder_output.contiguous()
@@ -127,7 +127,7 @@ class DecoderRNN(nn.Module):
             context = weights.unsqueeze(1).bmm(encoder_output)
             output = self.out(
                 torch.cat((context.squeeze(1), output.squeeze(1)), 1))
-            output = F.log_softmax(output, 1)
+            output = F.log_softmax(output, dim=1)
             return output, hidden, context, weights
         else:
             output, hidden = self.rnn(embed, hidden)
