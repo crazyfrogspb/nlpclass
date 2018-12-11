@@ -230,8 +230,6 @@ class TranslationModel(nn.Module):
         return predictions
 
     def beam(self, decoder_input, decoder_hidden, encoder_output, context):
-        indices = []
-        probs = []
         data = []
 
         decoder_input = decoder_input.unsqueeze(dim=0)
@@ -242,8 +240,7 @@ class TranslationModel(nn.Module):
         topv, topi = decoder_output.topk(self.beam_size)
 
         for x in range(self.beam_size):
-            # indices.append(topi[0][x].item())
-            probs.append(topv[0][x].item())
+
             data.append({'decoder_hidden': decoder_hidden,
                          'decoder_input': topi[0, x],
                          'decoder_input_num': topi[0, x].item(),
@@ -262,6 +259,7 @@ class TranslationModel(nn.Module):
         topv, topi = decoder_output.topk(self.beam_size)
 
         for x in range(self.beam_size):
+
             beams_keep[x].append({'decoder_hidden': decoder_hidden,
                                   'decoder_input': topi[0, x],
                                   'decoder_input_num': topi[0, x].item(),
@@ -280,31 +278,24 @@ class TranslationModel(nn.Module):
                 self.beam(beam_it[0]['decoder_input'], beam_it[0]
                           ['decoder_hidden'], enocoder_output, beam_it[0]['context'])
 
-            for sub_beam in data:
+            beam_prob = 1
+            for z in beam_it:
+                beam_prob = beam_prob * np.exp(z['value_num'])
+
+            for data_num, sub_beam in enumerate(data):
                 # getting the probability for the beams being explored
-                beam_prob = 1
-                for z in beam_it:
-                    beam_prob = beam_prob * np.exp(z['value_num'])
-
-                # saving them
-                for z, q in enumerate(data):
-                    probs_vec[z + beam_num * self.beam_size] = beam_prob * \
-                        np.exp(q['value_num']) / step**self.beam_alpha
-
-                # saving all the histories
-                for t in range(self.beam_size):
-
-                    beams[t + beam_num * self.beam_size] = beam_it.copy()
-                    beams[t + beam_num * self.beam_size].append(sub_beam)
+                probs_vec[data_num + beam_num * self.beam_size] = beam_prob * \
+                    np.exp(sub_beam['value_num']) / step**self.beam_alpha
+                beams[data_num + beam_num * self.beam_size] = beam_it.copy()
+                beams[data_num + beam_num * self.beam_size].append(sub_beam)
 
         return beams, probs_vec
 
-    def ind_beam(self, beams_keep, enocoder_output_one):
+    def ind_beam(self, beams_keep, enocoder_output):
         final_sentences = []
         for idx in range(1, self.max_length):
 
-            beams, prob_vec = self.beam_step(
-                beams_keep, idx, enocoder_output_one)
+            beams, prob_vec = self.beam_step(beams_keep, idx, enocoder_output)
 
             # finding the best beams
             best_inds = np.argpartition(
@@ -317,6 +308,7 @@ class TranslationModel(nn.Module):
                     beams_keep.append([])
 
             for ind_num, ind in enumerate(best_inds):
+
                 beams_keep[ind_num] = beams[ind]
 
             beam_copy = beams_keep.copy()
