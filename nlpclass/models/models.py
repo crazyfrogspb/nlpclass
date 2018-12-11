@@ -1,12 +1,12 @@
 import random
 
 import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
-
 from nlpclass.config import model_config
+from torch.autograd import Variable
 
 
 class EncoderCNN(nn.Module):
@@ -345,7 +345,10 @@ class TranslationModel(nn.Module):
                 dim=0)
             decoder_hidden_one = decoder_hidden[:, sentence, :].unsqueeze(dim=1)
             decoder_input_one = decoder_input[sentence].unsqueeze(dim=0)
-            context_one = context[sentence, :, :].unsqueeze(dim=0)
+            if context is not None:
+                context_one = context[sentence, :, :].unsqueeze(dim=0)
+            else:
+                context_one = None
 
             beams_keep = self.beams_init(decoder_input_one,
                                          decoder_hidden_one, enocoder_output_one, context_one)
