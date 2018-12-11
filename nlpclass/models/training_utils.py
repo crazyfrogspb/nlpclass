@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import torch.utils.data
 from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
 
 from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
@@ -77,7 +76,7 @@ def calc_loss(logits, target, criterion):
 
 def train_epoch(model, optimizer, data, data_loaders, criterion, logging_freq=1000):
     epoch_loss = 0
-    for i, batch in enumerate(tqdm(data_loaders['train'])):
+    for i, batch in enumerate(data_loaders['train']):
         model.train()
         optimizer.zero_grad()
         logits = model(batch)
@@ -132,7 +131,7 @@ def train_model(language, network_type, attention,
                 dropout, bidirectional,
                 batch_size, learning_rate, optimizer, n_epochs, early_stopping,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
-                subsample, retrain=False):
+                subsample, kernel_size):
     training_parameters = locals()
     data, data_loaders, max_length = load_data(language, subsample, batch_size)
 
@@ -148,7 +147,7 @@ def train_model(language, network_type, attention,
                              embedding_size, multiplier * hidden_size, num_layers_dec, attention)
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
-            data['train'].input_lang.n_words, embedding_size, hidden_size, num_layers_enc)
+            data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
         if attention:
             warnings.warn('Attention is not supported for CNN encoder')
         decoder = DecoderRNN(data['train'].output_lang.n_words,
@@ -179,11 +178,11 @@ def train_model(language, network_type, attention,
         for par_name, par_value in training_parameters.items():
             mlflow.log_param(par_name, par_value)
 
-        for epoch in tqdm(range(n_epochs)):
+        for epoch in range(n_epochs):
+            print(f'Fitting epoch {epoch}')
             if early_counter >= early_stopping:
                 finalize_run(best_model, best_bleu, best_loss)
                 return best_model
-
 
             val_loss, val_bleu = evaluate(model, data, data_loaders, criterion)
             mlflow.log_metric('val_loss_epoch', val_loss)

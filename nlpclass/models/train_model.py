@@ -21,6 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_layers_dec', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--bidirectional', action='store_true')
+    parser.add_arguments('--kernel_size', type=int, default=7)
 
     parser.add_argument('--batch_size', type=int, default=24)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
@@ -33,7 +34,6 @@ if __name__ == '__main__':
     parser.add_argument('--beam_size', type=int, default=5)
     parser.add_argument('--beam_alpha', type=float, default=1.0)
 
-    parser.add_argument('--retrain', action='store_true')
     parser.add_argument('--subsample', type=float, default=1.0)
 
     args = parser.parse_args()

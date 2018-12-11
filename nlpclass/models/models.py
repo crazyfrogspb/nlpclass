@@ -11,7 +11,7 @@ from nlpclass.config import model_config
 
 class EncoderCNN(nn.Module):
     def __init__(self, input_size, num_layers=2,
-                 embedding_size=100, hidden_size=64, kernel_size=3):
+                 embedding_size=100, hidden_size=64, kernel_size=7):
         super().__init__()
         self.input_size = input_size
         self.embedding_size = embedding_size
@@ -158,7 +158,7 @@ class TranslationModel(nn.Module):
 
         if len(encoder_hidden.size()) == 2:
             encoder_hidden = encoder_hidden.unsqueeze(0)
-            
+
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
 
         context = None
