@@ -80,19 +80,18 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, accumulate_gradient=10, logging_freq=1000):
+def train_epoch(model, optimizer, data, data_loaders, logging_freq=1000):
     epoch_loss = 0
     for i, batch in enumerate(data_loaders['train']):
         model.train()
+        optimizer.zero_grad()
         logits, loss = model(batch)
         #loss = calc_loss(logits, batch['target'], criterion)
         #print(total_loss, loss)
         loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
                                model.parameters()), model_config.grad_norm)
-        if i % accumulate_gradient == 0:
-            optimizer.step()
-            optimizer.zero_grad()
+        optimizer.step()
         epoch_loss += loss.item()
         if i % logging_freq == 0:
             val_loss, val_bleu = evaluate(model, data, data_loaders)
@@ -143,7 +142,7 @@ def train_model(language, network_type, attention,
                 dropout, bidirectional,
                 batch_size, learning_rate, optimizer, n_epochs, early_stopping,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
-                subsample, kernel_size, accumulate_gradient):
+                subsample, kernel_size):
     training_parameters = locals()
     data, data_loaders, max_length = load_data(language, subsample, batch_size)
 
@@ -200,7 +199,7 @@ def train_model(language, network_type, attention,
                 return best_model
 
             train_loss = train_epoch(
-                model, optimizer, data, data_loaders, accumulate_gradient)
+                model, optimizer, data, data_loaders)
             mlflow.log_metric('train_loss_epoch', train_loss)
 
             val_loss, val_bleu_greedy = evaluate(
