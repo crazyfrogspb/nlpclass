@@ -8,7 +8,7 @@ import mlflow.pytorch
 import numpy as np
 import torch
 import torch.utils.data
-from torch.nn.utils import clip_grad_norm_
+from torch.nn.utils import clip_grad_value_
 
 from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
@@ -89,7 +89,7 @@ def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders,
         #loss = calc_loss(logits, batch['target'], criterion)
         #print(total_loss, loss)
         loss.backward()
-        clip_grad_norm_(filter(lambda p: p.requires_grad,
+        clip_grad_value_(filter(lambda p: p.requires_grad,
                                model.parameters()), clipping_value)
         optimizer.step()
         epoch_loss += loss.item()
