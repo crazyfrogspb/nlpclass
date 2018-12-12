@@ -88,10 +88,17 @@ def unicodeToAscii(s):
     )
 
 
+def normalizeString_fr(s):
+    s = unicodeToAscii(s.lower().strip())
+    s = re.sub(r"([.!?])", r" \1", s)
+    s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
+    return s
+
+
 def normalizeString(s):
     #s = unicodeToAscii(s.lower().strip())
     s = s.lower().strip()
-    s = re.sub(r"([!?])", r" \1", s)
+    s = re.sub(r"([.!?])", r" \1", s)
     s = re.sub(" &apos;", r"", s)
     s = re.sub(r"[^\wa-zA-Z.!?]+", r" ", s)
     return s
@@ -100,8 +107,12 @@ def normalizeString(s):
 def readLangs(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     # Split every line into pairs and normalize
     pairs_pure = zip(lang1_data, lang2_data)
-    pairs = [[normalizeString(l[0]), normalizeString(l[1])] for l in pairs_pure]
-
+    if lang1_name == 'fr':
+        pairs = [[normalizeString_fr(l[0]), normalizeString_fr(l[1])]
+                 for l in pairs_pure]
+    else:
+        pairs = [[normalizeString(l[0]), normalizeString(l[1])]
+                 for l in pairs_pure]
     # Reverse pairs, make Lang instances
     if reverse:
         pairs = [list(reversed(p)) for p in pairs]
@@ -170,9 +181,9 @@ def text_collate_func(batch):
     input_seqs, target_seqs = zip(*seq_pairs)
 
     input_lengths = [len(s) for s in input_seqs]
-    input_padded = [pad_seq(s, max(input_lengths)) for s in input_seqs]
+    input_padded = [pad_seq(seq, max(input_lengths)) for seq in input_seqs]
     target_lengths = [len(s) for s in target_seqs]
-    target_padded = [pad_seq(s, max(target_lengths)) for s in target_seqs]
+    target_padded = [pad_seq(seq, max(target_lengths)) for seq in target_seqs]
 
     return {'input': torch.LongTensor(input_padded).to(model_config.device),
             'target': torch.LongTensor(target_padded).to(model_config.device),

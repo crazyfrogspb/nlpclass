@@ -66,15 +66,15 @@ class EncoderRNN(nn.Module):
         embed = self.embedding(x)
         packed = torch.nn.utils.rnn.pack_padded_sequence(
             embed, lengths, batch_first=True)
-        encoded_input, hidden = self.rnn(packed, hidden)
-        encoded_input, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            encoded_input, padding_value=model_config.PAD_token, batch_first=True)
+        encoder_output, hidden = self.rnn(packed, hidden)
+        encoder_output, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            encoder_output, padding_value=model_config.PAD_token, batch_first=True)
 
         if self.bidirectional:
             hidden = torch.cat(
                 (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0)), 2)
 
-        return encoded_input, hidden
+        return encoder_output, hidden
 
 
 class Attention(nn.Module):
@@ -214,6 +214,7 @@ class TranslationModel(nn.Module):
                     1).to(model_config.device)
 
             decoder_hidden = decoder_hidden.detach()
+            
         total_loss /= target_length.float()
 
         return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous(), total_loss.mean()

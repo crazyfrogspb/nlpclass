@@ -23,35 +23,35 @@ MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
 def load_tokens(language, dataset_type):
-    lang_lines = []
+    lines_lang = []
     with open(osp.join(DATA_DIR, 'raw', f'iwslt-{language}-en',
                        f'{dataset_type}.tok.{language}')) as fin:
         for line in fin:
-            lang_lines.append(line.strip())
+            lines_lang.append(line.strip())
 
-    en_lines = []
+    lines_en = []
     with open(osp.join(DATA_DIR, 'raw', f'iwslt-{language}-en',
                        f'{dataset_type}.tok.en')) as fin:
         for line in fin:
-            en_lines.append(line.strip())
-    return lang_lines, en_lines
+            lines_en.append(line.strip())
+    return lines_lang, lines_en
 
 
 def load_data(language, subsample=1.0, batch_size=16):
     data = {}
     data_loaders = {}
     for dataset_type in ['train', 'dev', 'test']:
-        lines_en, lines_lang = load_tokens(language, dataset_type)
+        lines_lang, lines_en = load_tokens(language, dataset_type)
         if subsample < 1.0 and dataset_type == 'train':
             sample_size = int(subsample * len(lines_en))
-            lines_en, lines_lang = zip(
-                *random.sample(list(zip(lines_en, lines_lang)), sample_size))
+            lines_lang, lines_en = zip(
+                *random.sample(list(zip(lines_lang, lines_en)), sample_size))
         if dataset_type == 'train':
             load_embeddings = False
         else:
             load_embeddings = False
-        data_dict = prepareData('eng', language, lines_en,
-                                lines_lang, load_embeddings=load_embeddings)
+        data_dict = prepareData(language, 'en', lines_lang,
+                                lines_en, load_embeddings=load_embeddings)
         if dataset_type == 'train':
             data[dataset_type] = TranslationDataset(
                 data_dict['input_lang'], data_dict['output_lang'], data_dict['pairs'])
@@ -147,15 +147,19 @@ def train_model(language, network_type, attention,
     data, data_loaders, max_length = load_data(language, subsample, batch_size)
 
     if network_type == 'recurrent':
-        encoder = EncoderRNN(data['train'].input_lang.n_words,
-                             embedding_size, hidden_size, num_layers_enc,
-                             dropout, bidirectional)
+        encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
+                             embedding_size=embedding_size, hidden_size=hidden_size,
+                             num_layers=num_layers_enc, dropout=dropout,
+                             bidirectional=bidirectional)
         if bidirectional:
             multiplier = 2
         else:
             multiplier = 1
         decoder = DecoderRNN(data['train'].output_lang.n_words,
-                             embedding_size, multiplier * hidden_size, num_layers_dec, attention)
+                             embedding_size=embedding_size,
+                             hidden_size=(multiplier * hidden_size),
+                             num_layers=num_layers_dec,
+                             attention=attention)
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
             data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
