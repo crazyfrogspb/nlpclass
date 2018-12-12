@@ -80,7 +80,7 @@ def calc_loss(logits, target, criterion):
     return criterion(logits_flat, target_flat)
 
 
-def train_epoch(model, optimizer, data, data_loaders, logging_freq=1000):
+def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders, logging_freq=500):
     epoch_loss = 0
     for i, batch in enumerate(data_loaders['train']):
         model.train()
@@ -90,11 +90,13 @@ def train_epoch(model, optimizer, data, data_loaders, logging_freq=1000):
         #print(total_loss, loss)
         loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
-                               model.parameters()), model_config.grad_norm)
+                               model.parameters()), clipping_value)
         optimizer.step()
         epoch_loss += loss.item()
         if i % logging_freq == 0:
             val_loss, val_bleu = evaluate(model, data, data_loaders)
+            if scheduler is not None:
+                scheduler.step(val_loss)
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
@@ -140,7 +142,8 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
 def train_model(language, network_type, attention,
                 embedding_size, hidden_size, num_layers_enc, num_layers_dec,
                 dropout, bidirectional,
-                batch_size, learning_rate, optimizer, n_epochs, early_stopping,
+                batch_size, learning_rate, optimizer, clipping_value,
+                n_epochs, early_stopping,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
                 subsample, kernel_size):
     training_parameters = locals()
@@ -174,9 +177,12 @@ def train_model(language, network_type, attention,
     if optimizer == 'adam':
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()), learning_rate)
+        scheduler = None
     elif optimizer == 'sgd':
         optimizer = torch.optim.SGD(
-            filter(lambda p: p.requires_grad, model.parameters()), learning_rate)
+            filter(lambda p: p.requires_grad, model.parameters()), learning_rate, momentum=0.9)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 'min', patience=2)
     else:
         raise ValueError(f'Option {optimizer} is not supported for optimizer')
 
@@ -199,7 +205,7 @@ def train_model(language, network_type, attention,
                 return best_model
 
             train_loss = train_epoch(
-                model, optimizer, data, data_loaders)
+                model, optimizer, scheduler, clipping_value, data, data_loaders)
             mlflow.log_metric('train_loss_epoch', train_loss)
 
             val_loss, val_bleu_greedy = evaluate(
