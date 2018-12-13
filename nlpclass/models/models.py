@@ -1,3 +1,7 @@
+"""
+Definitions of all model classes
+"""
+
 import random
 
 import numpy as np
@@ -12,6 +16,21 @@ from nlpclass.config import model_config
 class EncoderCNN(nn.Module):
     def __init__(self, input_size, num_layers=2,
                  embedding_size=100, hidden_size=64, kernel_size=7):
+        """Convolutional encoder class.
+
+        Parameters
+        ----------
+        input_size : int
+            Size of the vocabulary.
+        num_layers : int, optional
+            Number of convolutional layers (the default is 2).
+        embedding_size : int, optional
+            Embedding size (the default is 100).
+        hidden_size : int, optional
+            Size of the convolutional layers (the default is 64).
+        kernel_size : int
+            Kernel size (the default is 7).
+        """
         super().__init__()
         self.input_size = input_size
         self.embedding_size = embedding_size
@@ -47,6 +66,25 @@ class EncoderRNN(nn.Module):
     def __init__(self, input_size,
                  embedding_size=100, hidden_size=64, num_layers=1,
                  dropout=0.0, bidirectional=False, pretrained_embeddings=None):
+        """Recurrent encoder class.
+
+        Parameters
+        ----------
+        input_size : int
+            Size of the input vocabulary.
+        embedding_size : int, optional
+            Embedding size (the default is 100).
+        hidden_size : int, optional
+            Size of the recurrent layer (the default is 64).
+        num_layers : int, optional
+            Number of layers (the default is 1).
+        dropout : float, optional
+            Dropout between recurrent layers (the default is 0.0).
+        bidirectional : bool, optional
+            Whether to make recurrent layer bidirectional (the default is False).
+        pretrained_embeddings : np.array, optional
+            Array of pretrained word embeddings (the default is None).
+        """
         super().__init__()
         self.input_size = input_size
         self.embedding_size = embedding_size
@@ -57,8 +95,12 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        self.init_weights(pretrained_embeddings)
-        self.embedding.weight.data.uniform_(-0.05, 0.05)
+        if pretrained_embeddings is not None:
+            self.init_weights(pretrained_embeddings)
+        else:
+            self.embedding.weight.data.uniform_(
+                -model_config.embedding_init, model_config.embedding_init)
+
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -85,6 +127,13 @@ class EncoderRNN(nn.Module):
 
 class Attention(nn.Module):
     def __init__(self, hidden_size):
+        """Luong's general attention layer class.
+
+        Parameters
+        ----------
+        hidden_size : int
+            Size of the attention layer.
+        """
         super().__init__()
         self.hidden_size = hidden_size
         self.attn = nn.Linear(self.hidden_size, self.hidden_size)
@@ -92,16 +141,33 @@ class Attention(nn.Module):
     def forward(self, hidden, encoder_output):
         encoder_output = encoder_output.contiguous()
         energies = self.attn(encoder_output.view(-1, self.hidden_size))
-        energies = torch.bmm(energies.view(
-            *encoder_output.size()), hidden.transpose(1, 2)).squeeze(2)
+        energies = energies.view(*encoder_output.size())
+        energies = torch.bmm(energies, hidden.transpose(1, 2)).squeeze(2)
 
-        return F.softmax(energies, 1)
+        return F.softmax(energies, dim=1)
 
 
 class DecoderRNN(nn.Module):
     def __init__(self, output_size,
                  embedding_size=100, hidden_size=64,
                  num_layers=1, attention=False, pretrained_embeddings=None):
+        """Recurrent decoder class.
+
+        Parameters
+        ----------
+        output_size : int
+            Size of the target vocabulary.
+        embedding_size : int, optional
+            Embedding size (the default is 100).
+        hidden_size : int, optional
+            Size of the recurrent layer (the default is 64).
+        num_layers : int, optional
+            Number of layers (the default is 1).
+        attention : boolean, optional
+            Whether to use attention mechanism (the default is False).
+        pretrained_embeddings : np.array, optional
+            Array of pretrained word embeddings (the default is None).
+        """
         super().__init__()
         self.output_size = output_size
         self.embedding_size = embedding_size
@@ -110,16 +176,22 @@ class DecoderRNN(nn.Module):
         self.attention = attention
 
         rnn_input_size = self.embedding_size + self.hidden_size
+
         if self.attention:
             self.attention_layer = Attention(self.hidden_size)
+            self.concat = nn.Linear(self.hidden_size * 2, self.hidden_size * 2)
             self.out = nn.Linear(self.hidden_size * 2, self.output_size)
         else:
             self.out = nn.Linear(self.hidden_size, self.output_size)
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        self.init_weights(pretrained_embeddings)
-        self.embedding.weight.data.uniform_(-0.05, 0.05)
+        if pretrained_embeddings is not None:
+            self.init_weights(pretrained_embeddings)
+        else:
+            self.embedding.weight.data.uniform_(
+                -model_config.embedding_init, model_config.embedding_init)
+
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
@@ -130,16 +202,19 @@ class DecoderRNN(nn.Module):
         if self.attention:
             output, hidden = self.rnn(embed, hidden)
             weights = self.attention_layer(output, encoder_output)
-            context = weights.unsqueeze(1).bmm(encoder_output)
-            output = self.out(
-                torch.cat((context.squeeze(1), output.squeeze(1)), 1))
+            weights = weights.unsqueeze(1)
+            context = weights.bmm(encoder_output)
+            hidden_context = torch.cat(
+                (context.squeeze(1), hidden.squeeze(0)), dim=1)
+            hidden_context = F.tanh(self.concat(hidden_context))
+            output = self.out(hidden_context)
             output = F.log_softmax(output, dim=1)
             return output, hidden, context, weights
         else:
             output, hidden = self.rnn(embed, hidden)
             output = self.out(output.squeeze(1))
             output = F.log_softmax(output, dim=1)
-            return output, hidden, context, encoder_output
+            return output, hidden, context, None
 
     def init_weights(self, pretrained_embeddings):
         if pretrained_embeddings is not None:
@@ -148,6 +223,7 @@ class DecoderRNN(nn.Module):
 
 
 def calculate_loss(decoder_output, idx, target_tokens, target_length):
+    # calculate masked loss for the given index
     mask = torch.LongTensor(np.repeat([idx], decoder_output.size(0)))
     mask = Variable(mask).to(model_config.device)
     mask = mask < target_length
@@ -159,6 +235,21 @@ def calculate_loss(decoder_output, idx, target_tokens, target_length):
 class TranslationModel(nn.Module):
     def __init__(self, encoder, decoder,
                  teacher_forcing_ratio=1.0, beam_size=5, beam_alpha=1.0):
+        """Wrapper for Seq2Seq model.
+
+        Parameters
+        ----------
+        encoder : EncoderCNN or EncoderRNN
+            Encoder instance.
+        decoder : DecoderRNN
+            Decoder instance.
+        teacher_forcing_ratio : float, optional
+            Teacher forcing ratio (the default is 1.0).
+        beam_size : int, optional
+            Size of the beam (the default is 5).
+        beam_alpha : float, optional
+            Length penalty (the default is 1.0).
+        """
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -175,6 +266,7 @@ class TranslationModel(nn.Module):
         if len(encoder_hidden.size()) == 2:
             encoder_hidden = encoder_hidden.unsqueeze(0)
 
+        # get the hidden state of the last recurrent layer
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
 
         if self.decoder.attention:
@@ -250,12 +342,9 @@ class TranslationModel(nn.Module):
 
     def beam(self, decoder_input, decoder_hidden, encoder_output, context):
         data = []
-
         decoder_input = decoder_input.unsqueeze(dim=0)
-
         decoder_output, decoder_hidden, context, weights = self.decoder(
             decoder_input, decoder_hidden, encoder_output, context)
-
         topv, topi = decoder_output.topk(self.beam_size)
 
         for x in range(self.beam_size):
@@ -267,15 +356,14 @@ class TranslationModel(nn.Module):
                          'value_num': topv[0, x].item(),
                          'context': context})
 
-        # return indices, probs, data
         return data
 
     def beams_init(self, decoder_input, decoder_hidden, encoder_output, context):
         beams_keep = [[] for i in range(self.beam_size)]
-
         decoder_output, decoder_hidden, context, weights = self.decoder(
             decoder_input, decoder_hidden, encoder_output, context)
         topv, topi = decoder_output.topk(self.beam_size)
+
         for x in range(self.beam_size):
             beams_keep[x].append({'decoder_hidden': decoder_hidden,
                                   'decoder_input': topi[0, x],
@@ -354,8 +442,6 @@ class TranslationModel(nn.Module):
         encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
             input_seq, input_length)
 
-        # predictions = torch.LongTensor(
-        #   [model_config.SOS_token] * batch_size, [model_config.SOS_token]*self.max_length).unsqueeze(1).to(model_config.device)
         predictions = torch.zeros(batch_size, self.max_length + 1)
 
         for sentence in range(batch_size):

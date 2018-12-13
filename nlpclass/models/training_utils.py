@@ -1,3 +1,7 @@
+"""
+All utilities for training the model and tracking its quality
+"""
+
 import os.path as osp
 import random
 import warnings
@@ -23,6 +27,7 @@ MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
 def load_tokens(language, dataset_type):
+    # load tokenized sentences for the language
     lines_lang = []
     with open(osp.join(DATA_DIR, 'raw', f'iwslt-{language}-en',
                        f'{dataset_type}.tok.{language}')) as fin:
@@ -38,72 +43,65 @@ def load_tokens(language, dataset_type):
 
 
 def load_data(language, subsample=1.0, batch_size=16):
+    # create dataset and data loader instances
     data = {}
     data_loaders = {}
     for dataset_type in ['train', 'dev', 'test']:
         lines_lang, lines_en = load_tokens(language, dataset_type)
+
         if subsample < 1.0 and dataset_type == 'train':
+            # for testing
             sample_size = int(subsample * len(lines_en))
             lines_lang, lines_en = zip(
                 *random.sample(list(zip(lines_lang, lines_en)), sample_size))
-        if dataset_type == 'train':
-            load_embeddings = True
-        else:
-            load_embeddings = False
+
+        load_embeddings = True if dataset_type == 'train' else False
         data_dict = prepareData(language, 'en', lines_lang,
                                 lines_en, load_embeddings=load_embeddings)
+
         if dataset_type == 'train':
             data[dataset_type] = TranslationDataset(
                 data_dict['input_lang'], data_dict['output_lang'], data_dict['pairs'])
         else:
+            # use train Lang instance
             data[dataset_type] = TranslationDataset(
                 data['train'].input_lang, data['train'].target_lang, data_dict['pairs'])
+
         data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
                                                                  batch_size=batch_size,
                                                                  collate_fn=text_collate_func,
                                                                  shuffle=True)
 
-    max_length = 0
-    for x in data['train'].pairs:
-        len1 = len(x[0].split(" "))
-        len2 = len(x[1].split(" "))
-        max_len = max(len1, len2)
-        if max_len > max_length:
-            max_length = max_len
+    return data, data_loaders
 
-    return data, data_loaders, max_length
 
-def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders, logging_freq=500):
+def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders):
+    # train model for one epoch
     epoch_loss = 0
     for i, batch in enumerate(data_loaders['train']):
         model.train()
         optimizer.zero_grad()
         loss = model(batch)
-        #loss = calc_loss(logits, batch['target'], criterion)
-        #print(total_loss, loss)
         loss.backward()
         clip_grad_norm_(filter(lambda p: p.requires_grad,
-                                model.parameters()), clipping_value)
+                               model.parameters()), clipping_value)
         optimizer.step()
         epoch_loss += loss.item()
-        if i % logging_freq == 0:
+
+        if i % model_config.logging_freq == 0:
             val_loss, val_bleu = evaluate(model, data, data_loaders)
             if scheduler is not None:
                 scheduler.step(val_loss)
             mlflow.log_metric('val_loss', val_loss)
             mlflow.log_metric('val_bleu', val_bleu)
 
-            # train_loss, train_bleu = evaluate(
-            #    model, data, data_loaders, criterion, dataset_type='train')
-            #mlflow.log_metric('train_loss', train_loss)
-            #mlflow.log_metric('train_bleu', train_bleu)
     return epoch_loss / (i + 1)
 
 
 def finalize_run(best_model, best_bleu, best_loss):
+    # finalize run
     mlflow.log_metric('best_loss', best_loss)
     mlflow.log_metric('best_bleu', best_bleu)
-    mlflow.pytorch.log_model(best_model, 'models')
 
 
 def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
@@ -139,8 +137,10 @@ def train_model(language, network_type, attention,
                 n_epochs, early_stopping, pretrained_embeddings,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
                 subsample, kernel_size):
+    # main function for training the model
     training_parameters = locals()
-    data, data_loaders, max_length = load_data(language, subsample, batch_size)
+
+    data, data_loaders = load_data(language, subsample, batch_size)
 
     if network_type == 'recurrent':
         if pretrained_embeddings:
@@ -148,29 +148,28 @@ def train_model(language, network_type, attention,
             embeddings_dec = data['train'].target_lang.embeddings
         else:
             embeddings_enc = None
-            embedding_dec
+            embedding_dec = None
+
         encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
                              embedding_size=embedding_size, hidden_size=hidden_size,
                              num_layers=num_layers_enc, dropout=dropout,
                              bidirectional=bidirectional,
                              pretrained_embeddings=embeddings_enc)
-        if bidirectional:
-            multiplier = 2
-        else:
-            multiplier = 1
-        decoder = DecoderRNN(data['train'].target_lang.n_words,
-                             embedding_size=embedding_size,
-                             hidden_size=(multiplier * hidden_size),
-                             num_layers=num_layers_dec,
-                             attention=attention,
-                             pretrained_embeddings=embeddings_dec)
+
+        multiplier = 2 if bidirectional else 1
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
             data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
         if attention:
-            warnings.warn('Attention is not supported for CNN encoder')
-        decoder = DecoderRNN(data['train'].target_lang.n_words,
-                             embedding_size, hidden_size, num_layers_dec, attention=False)
+            raise ValueError('Attention is not supported for CNN encoder')
+        multiplier = 1
+
+    decoder = DecoderRNN(data['train'].target_lang.n_words,
+                         embedding_size=embedding_size,
+                         hidden_size=(multiplier * hidden_size),
+                         num_layers=num_layers_dec,
+                         attention=attention,
+                         pretrained_embeddings=embeddings_dec)
 
     model = TranslationModel(encoder, decoder,
                              teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)
@@ -178,17 +177,14 @@ def train_model(language, network_type, attention,
     if optimizer == 'adam':
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()), learning_rate)
-        scheduler = None
     elif optimizer == 'sgd':
         optimizer = torch.optim.SGD(
             filter(lambda p: p.requires_grad, model.parameters()), learning_rate, momentum=0.9)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 'min', patience=2)
     else:
         raise ValueError(f'Option {optimizer} is not supported for optimizer')
 
-    weight = torch.ones(model.decoder.output_size).to(model_config.device)
-    weight[model_config.PAD_token] = 0
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 'min', patience=model_config.decay_patience, factor=model_config.decay_factor)
 
     best_bleu = 0.0
     best_loss = np.inf
@@ -203,12 +199,12 @@ def train_model(language, network_type, attention,
             print(f'Fitting epoch {epoch}')
             if early_counter >= early_stopping:
                 finalize_run(best_model, best_bleu, best_loss)
-                return best_model
+                return 'success'
 
             train_loss = train_epoch(
                 model, optimizer, scheduler, clipping_value, data, data_loaders)
-            mlflow.log_metric('train_loss_epoch', train_loss)
 
+            mlflow.log_metric('train_loss_epoch', train_loss)
             val_loss, val_bleu_greedy = evaluate(
                 model, data, data_loaders)
             mlflow.log_metric('val_loss_epoch', val_loss)
@@ -223,8 +219,13 @@ def train_model(language, network_type, attention,
                 best_loss = val_loss
                 best_bleu = val_bleu
                 best_model = deepcopy(model)
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': best_model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict()
+                }, osp.join(MODEL_DIR, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
             else:
                 early_counter += 1
 
-        finalize_run(best_model, best_bleu, best_loss)
-        return best_model
+        return 'success'

@@ -1,3 +1,7 @@
+"""
+Main entry point, reads parameters from the command line and trains the model
+"""
+
 import argparse
 import os.path as osp
 

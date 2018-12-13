@@ -10,6 +10,10 @@ class ModelConfig():
     min_count = 2
     max_length = 100
     embed_size = 256
+    embedding_init = 0.05
+    logging_freq = 500
+    decay_patience = 3
+    decay_factor = 0.1
 
 
 model_config = ModelConfig()
