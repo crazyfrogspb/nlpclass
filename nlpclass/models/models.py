@@ -374,14 +374,14 @@ class TranslationModel(nn.Module):
 
         return beams_keep
 
-    def beam_step(self, beams_keep, step, enocoder_output):
+    def beam_step(self, beams_keep, step, encoder_output):
         beams = [[] for i in range(self.beam_size ** 2)]
         probs_vec = np.zeros(self.beam_size ** 2)
 
         for beam_num, beam_it in enumerate(beams_keep):
             data = \
                 self.beam(beam_it[-1]['decoder_input'], beam_it[-1]
-                          ['decoder_hidden'], enocoder_output, beam_it[-1]['context'])
+                          ['decoder_hidden'], encoder_output, beam_it[-1]['context'])
 
             beam_prob = 1
             for z in beam_it:
@@ -396,11 +396,11 @@ class TranslationModel(nn.Module):
 
         return beams, probs_vec
 
-    def ind_beam(self, beams_keep, enocoder_output):
+    def ind_beam(self, beams_keep, encoder_output):
         final_sentences = []
         for idx in range(1, self.max_length):
 
-            beams, prob_vec = self.beam_step(beams_keep, idx, enocoder_output)
+            beams, prob_vec = self.beam_step(beams_keep, idx, encoder_output)
 
             # finding the best beams
             best_inds = np.argpartition(
@@ -445,9 +445,11 @@ class TranslationModel(nn.Module):
         predictions = torch.zeros(batch_size, self.max_length + 1)
 
         for sentence in range(batch_size):
-
-            enocoder_output_one = encoder_output[sentence, :, :].unsqueeze(
-                dim=0)
+            if encoder_output is not None:
+                encoder_output_one = encoder_output[sentence, :, :].unsqueeze(
+                    dim=0)
+            else:
+                encoder_output_one = None
             decoder_hidden_one = decoder_hidden[:, sentence, :].unsqueeze(dim=1)
             decoder_input_one = decoder_input[sentence].unsqueeze(dim=0)
             if context is not None:
@@ -456,9 +458,9 @@ class TranslationModel(nn.Module):
                 context_one = None
 
             beams_keep = self.beams_init(decoder_input_one,
-                                         decoder_hidden_one, enocoder_output_one, context_one)
+                                         decoder_hidden_one, encoder_output_one, context_one)
 
-            predict_sen = self.ind_beam(beams_keep, enocoder_output_one)
+            predict_sen = self.ind_beam(beams_keep, encoder_output_one)
             pred_len = len(predict_sen)
             predict_sen = torch.tensor(predict_sen)
 
