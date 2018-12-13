@@ -465,3 +465,39 @@ class TranslationModel(nn.Module):
             predictions[sentence, 1:pred_len + 1] = predict_sen
 
         return predictions
+
+
+def initialize_model(data, pretrained_embeddings, network_type,
+                     embedding_size, hidden_size, num_layers_enc, dropout,
+                     bidirectional, kernel_size, num_layers_dec,
+                     attention, teacher_forcing_ratio):
+    if pretrained_embeddings:
+        embeddings_enc = data['train'].input_lang.embeddings
+        embeddings_dec = data['train'].target_lang.embeddings
+    else:
+        embeddings_enc = None
+        embeddings_dec = None
+
+    if network_type == 'recurrent':
+        encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
+                             embedding_size=embedding_size, hidden_size=hidden_size,
+                             num_layers=num_layers_enc, dropout=dropout,
+                             bidirectional=bidirectional,
+                             pretrained_embeddings=embeddings_enc)
+        multiplier = 2 if bidirectional else 1
+    elif network_type == 'convolutional':
+        encoder = EncoderCNN(
+            data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
+        if attention:
+            raise ValueError('Attention is not supported for CNN encoder')
+        multiplier = 1
+
+    decoder = DecoderRNN(data['train'].target_lang.n_words,
+                         embedding_size=embedding_size,
+                         hidden_size=(multiplier * hidden_size),
+                         num_layers=num_layers_dec,
+                         attention=attention,
+                         pretrained_embeddings=embeddings_dec)
+
+    return TranslationModel(encoder, decoder,
+                            teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)

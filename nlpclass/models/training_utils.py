@@ -3,7 +3,6 @@ All utilities for training the model and tracking its quality
 """
 
 import os.path as osp
-import random
 from copy import deepcopy
 
 import mlflow
@@ -14,64 +13,13 @@ import torch.utils.data
 from torch.nn.utils import clip_grad_norm_
 
 from nlpclass.config import model_config
-from nlpclass.data.data_utils import (TranslationDataset, prepareData,
-                                      text_collate_func)
+from nlpclass.data.load_data import load_data
 from nlpclass.models.evaluation_utils import bleu_eval, output_to_translations
-from nlpclass.models.models import (DecoderRNN, EncoderCNN, EncoderRNN,
-                                    TranslationModel)
+from nlpclass.models.models import initialize_model
 
 CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
 MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
-
-
-def load_tokens(language, dataset_type):
-    # load tokenized sentences for the language
-    lines_lang = []
-    with open(osp.join(DATA_DIR, 'raw', f'iwslt-{language}-en',
-                       f'{dataset_type}.tok.{language}')) as fin:
-        for line in fin:
-            lines_lang.append(line.strip())
-
-    lines_en = []
-    with open(osp.join(DATA_DIR, 'raw', f'iwslt-{language}-en',
-                       f'{dataset_type}.tok.en')) as fin:
-        for line in fin:
-            lines_en.append(line.strip())
-    return lines_lang, lines_en
-
-
-def load_data(language, subsample=1.0, batch_size=16):
-    # create dataset and data loader instances
-    data = {}
-    data_loaders = {}
-    for dataset_type in ['train', 'dev', 'test']:
-        lines_lang, lines_en = load_tokens(language, dataset_type)
-
-        if subsample < 1.0 and dataset_type == 'train':
-            # for testing
-            sample_size = int(subsample * len(lines_en))
-            lines_lang, lines_en = zip(
-                *random.sample(list(zip(lines_lang, lines_en)), sample_size))
-
-        load_embeddings = True if dataset_type == 'train' else False
-        data_dict = prepareData(language, 'en', lines_lang,
-                                lines_en, load_embeddings=load_embeddings)
-
-        if dataset_type == 'train':
-            data[dataset_type] = TranslationDataset(
-                data_dict['input_lang'], data_dict['output_lang'], data_dict['pairs'])
-        else:
-            # use train Lang instance
-            data[dataset_type] = TranslationDataset(
-                data['train'].input_lang, data['train'].target_lang, data_dict['pairs'])
-
-        data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
-                                                                 batch_size=batch_size,
-                                                                 collate_fn=text_collate_func,
-                                                                 shuffle=True)
-
-    return data, data_loaders
 
 
 def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders):
@@ -141,37 +89,10 @@ def train_model(language, network_type, attention,
 
     data, data_loaders = load_data(language, subsample, batch_size)
 
-    if pretrained_embeddings:
-        embeddings_enc = data['train'].input_lang.embeddings
-        embeddings_dec = data['train'].target_lang.embeddings
-    else:
-        embeddings_enc = None
-        embeddings_dec = None
-
-    if network_type == 'recurrent':
-        encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
-                             embedding_size=embedding_size, hidden_size=hidden_size,
-                             num_layers=num_layers_enc, dropout=dropout,
-                             bidirectional=bidirectional,
-                             pretrained_embeddings=embeddings_enc)
-
-        multiplier = 2 if bidirectional else 1
-    elif network_type == 'convolutional':
-        encoder = EncoderCNN(
-            data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
-        if attention:
-            raise ValueError('Attention is not supported for CNN encoder')
-        multiplier = 1
-
-    decoder = DecoderRNN(data['train'].target_lang.n_words,
-                         embedding_size=embedding_size,
-                         hidden_size=(multiplier * hidden_size),
-                         num_layers=num_layers_dec,
-                         attention=attention,
-                         pretrained_embeddings=embeddings_dec)
-
-    model = TranslationModel(encoder, decoder,
-                             teacher_forcing_ratio=teacher_forcing_ratio).to(model_config.device)
+    model = initialize_model(data, pretrained_embeddings, network_type,
+                             embedding_size, hidden_size, num_layers_enc, dropout,
+                             bidirectional, kernel_size, num_layers_dec,
+                             attention, teacher_forcing_ratio)
 
     if optimizer == 'adam':
         optimizer = torch.optim.Adam(
@@ -223,7 +144,9 @@ def train_model(language, network_type, attention,
                     'epoch': epoch,
                     'model_state_dict': best_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict()
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'input_lang_w2i': data['train'].input_lang.word2index,
+                    'target_lang_w2i': data['train'].target_lang.word2index
                 }, osp.join(MODEL_DIR, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
             else:
                 early_counter += 1
