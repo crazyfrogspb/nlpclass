@@ -4,7 +4,6 @@ All utilities for training the model and tracking its quality
 
 import os.path as osp
 import random
-import warnings
 from copy import deepcopy
 
 import mlflow
@@ -142,14 +141,14 @@ def train_model(language, network_type, attention,
 
     data, data_loaders = load_data(language, subsample, batch_size)
 
-    if network_type == 'recurrent':
-        if pretrained_embeddings:
-            embeddings_enc = data['train'].input_lang.embeddings
-            embeddings_dec = data['train'].target_lang.embeddings
-        else:
-            embeddings_enc = None
-            embeddings_dec = None
+    if pretrained_embeddings:
+        embeddings_enc = data['train'].input_lang.embeddings
+        embeddings_dec = data['train'].target_lang.embeddings
+    else:
+        embeddings_enc = None
+        embeddings_dec = None
 
+    if network_type == 'recurrent':
         encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
                              embedding_size=embedding_size, hidden_size=hidden_size,
                              num_layers=num_layers_enc, dropout=dropout,
@@ -216,6 +215,7 @@ def train_model(language, network_type, attention,
             val_bleu = max(val_bleu_greedy, val_bleu_beam)
 
             if val_bleu >= best_bleu:
+                early_counter = 0
                 best_loss = val_loss
                 best_bleu = val_bleu
                 best_model = deepcopy(model)
