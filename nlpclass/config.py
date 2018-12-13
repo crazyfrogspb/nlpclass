@@ -9,7 +9,7 @@ class ModelConfig():
     UNK_token = 3
     min_count = 2
     max_length = 100
-    embed_size = 300
+    embed_size = 256
 
 
 model_config = ModelConfig()

@@ -47,7 +47,7 @@ def load_data(language, subsample=1.0, batch_size=16):
             lines_lang, lines_en = zip(
                 *random.sample(list(zip(lines_lang, lines_en)), sample_size))
         if dataset_type == 'train':
-            load_embeddings = False
+            load_embeddings = True
         else:
             load_embeddings = False
         data_dict = prepareData(language, 'en', lines_lang,
@@ -90,7 +90,7 @@ def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders,
         #print(total_loss, loss)
         loss.backward()
         clip_grad_value_(filter(lambda p: p.requires_grad,
-                               model.parameters()), clipping_value)
+                                model.parameters()), clipping_value)
         optimizer.step()
         epoch_loss += loss.item()
         if i % logging_freq == 0:
@@ -153,7 +153,8 @@ def train_model(language, network_type, attention,
         encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
                              embedding_size=embedding_size, hidden_size=hidden_size,
                              num_layers=num_layers_enc, dropout=dropout,
-                             bidirectional=bidirectional)
+                             bidirectional=bidirectional,
+                             pretrained_embeddings=data['train'].input_lang.embeddings)
         if bidirectional:
             multiplier = 2
         else:
@@ -162,7 +163,8 @@ def train_model(language, network_type, attention,
                              embedding_size=embedding_size,
                              hidden_size=(multiplier * hidden_size),
                              num_layers=num_layers_dec,
-                             attention=attention)
+                             attention=attention,
+                             pretrained_embeddings=data['train'].output_lang.embeddings)
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
             data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)

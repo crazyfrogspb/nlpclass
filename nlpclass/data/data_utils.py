@@ -1,3 +1,8 @@
+"""
+Utilities for loading and preprocessing data
+"""
+
+
 import os.path as osp
 import re
 import unicodedata
@@ -15,6 +20,13 @@ DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
 
 class Lang:
     def __init__(self, name):
+        """Language class
+
+        Parameters
+        ----------
+        name : str
+            Language name.
+        """
         self.name = name
         self.min_count = model_config.min_count
         self.word2index = {"SOS": model_config.SOS_token,
@@ -26,15 +38,17 @@ class Lang:
                            model_config.EOS_token: "EOS",
                            model_config.PAD_token: "PAD",
                            model_config.UNK_token: "UNK"}
-        self.n_words = 4  # Count SOS and EOS
+        self.n_words = 4
         self.embeddings = None
         self.pretrained_inds = []
 
     def addSentence(self, sentence):
+        # process words from the sentence
         for word in sentence.split(' '):
             self.addWord(word)
 
     def addWord(self, word):
+        # add word to the language
         if word not in self.word2index:
             self.word2index[word] = self.n_words
             self.word2count[word] = 1
@@ -44,6 +58,7 @@ class Lang:
             self.word2count[word] += 1
 
     def trim(self):
+        # trim vocabulary
         keep_words = []
         for word, count in self.word2count.items():
             if count >= self.min_count:
@@ -65,12 +80,13 @@ class Lang:
             self.word2count[word] = count
 
     def load_embeddings(self):
+        # load word2vec embeddings
         self.embeddings = np.zeros((self.n_words, model_config.embed_size))
-        ft_embeddings = KeyedVectors.load_word2vec_format(
-            osp.join(DATA_DIR, 'raw', f'wiki.{self.name}.vec'))
+        w2v_embeddings = KeyedVectors.load(
+            osp.join(DATA_DIR, 'interim', f'model_{self.name}.model'))
         for token, id_ in self.word2index.items():
-            if token in ft_embeddings:
-                self.embeddings[id_] = ft_embeddings[token]
+            if token in w2v_embeddings:
+                self.embeddings[id_] = w2v_embeddings[token]
                 self.pretrained_inds.append(id_)
             elif token == 'PAD':
                 self.embeddings[id_] = np.zeros(model_config.embed_size)
@@ -89,6 +105,7 @@ def unicodeToAscii(s):
 
 
 def normalizeString_fr(s):
+    # for testing original preprocessing
     s = unicodeToAscii(s.lower().strip())
     s = re.sub(r"([.!?])", r" \1", s)
     s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
@@ -96,7 +113,7 @@ def normalizeString_fr(s):
 
 
 def normalizeString(s):
-    #s = unicodeToAscii(s.lower().strip())
+    # cleaning string
     s = s.lower().strip()
     s = re.sub(r"([.!?])", r" \1", s)
     s = re.sub(" &apos;", r"", s)
@@ -126,6 +143,29 @@ def readLangs(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
 
 
 def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False, load_embeddings=False):
+    """Prepare data from raw lines.
+
+    Parameters
+    ----------
+    lang1_name : str
+        Name of the input language.
+    lang2_name : str
+        Name of the target language.
+    lang1_data : iter
+        Iterable with input sentences.
+    lang2_data : iter
+        Iterable with target sentences.
+    reverse : bool, optional
+        Whether to reverse the direction of translation (the default is False).
+    load_embeddings : bool, optional
+        Whether to load pretrained embeddings (the default is False).
+
+    Returns
+    -------
+    dict
+        Dictionary with input and target language instances and pairs of sentences.
+
+    """
     input_lang, output_lang, pairs = readLangs(
         lang1_name, lang2_name, lang1_data, lang2_data, reverse=reverse)
     print("Counting words...")
@@ -145,6 +185,7 @@ def prepareData(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False, l
 
 
 def indexesFromSentence(lang, sentence):
+    # convert tokens to indices
     tokens = sentence.split(' ')[:model_config.max_length]
     indices = [lang.word2index.get(word, model_config.UNK_token)
                for word in tokens]
@@ -153,9 +194,20 @@ def indexesFromSentence(lang, sentence):
 
 
 class TranslationDataset(torch.utils.data.Dataset):
-    def __init__(self, input_lang, output_lang, pairs):
+    def __init__(self, input_lang, target_lang, pairs):
+        """Translation Dataset class.
+
+        Parameters
+        ----------
+        input_lang : Lang
+            Lang instance of the input language.
+        target_lang : Lang
+            Lang instance of the target language.
+        pairs : iter
+            Iterable with pairs of the sentences.
+        """
         self.input_lang = input_lang
-        self.output_lang = output_lang
+        self.target_lang = target_lang
         self.pairs = pairs
 
     def __len__(self):
@@ -163,19 +215,21 @@ class TranslationDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         input_indices = indexesFromSentence(self.input_lang, self.pairs[idx][0])
-        output_indices = indexesFromSentence(
-            self.output_lang, self.pairs[idx][1])
+        target_indices = indexesFromSentence(
+            self.target_lang, self.pairs[idx][1])
 
-        return input_indices, output_indices
+        return input_indices, target_indices
 
 
 def pad_seq(seq, max_length):
+    # pad sequences
     seq += [model_config.PAD_token for i in range(max_length - len(seq))]
     return seq
 
 
 def text_collate_func(batch):
-    # thanks to https://github.com/spro/practical-pytorch/blob/master/seq2seq-translation/seq2seq-translation-batched.ipynb
+    # adapted from https://github.com/spro/practical-pytorch/blob/master/seq2seq-translation/seq2seq-translation-batched.ipynb
+    # dynamically sorts a batch in descending order of the length of the input sequences
     seq_pairs = sorted(batch,
                        key=lambda p: len(p[0]), reverse=True)
     input_seqs, target_seqs = zip(*seq_pairs)

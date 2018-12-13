@@ -46,7 +46,7 @@ class EncoderCNN(nn.Module):
 class EncoderRNN(nn.Module):
     def __init__(self, input_size,
                  embedding_size=100, hidden_size=64, num_layers=1,
-                 dropout=0.0, bidirectional=False):
+                 dropout=0.0, bidirectional=False, pretrained_embeddings=None):
         super().__init__()
         self.input_size = input_size
         self.embedding_size = embedding_size
@@ -57,7 +57,7 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        self.init_weights(pretrained_embeddings)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -75,6 +75,11 @@ class EncoderRNN(nn.Module):
                 (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0)), 2)
 
         return encoder_output, hidden
+
+    def init_weights(self, pretrained_embeddings):
+        if pretrained_embeddings is not None:
+            self.embedding.weight.data = torch.from_numpy(
+                pretrained_embeddings).float()
 
 
 class Attention(nn.Module):
@@ -95,7 +100,7 @@ class Attention(nn.Module):
 class DecoderRNN(nn.Module):
     def __init__(self, output_size,
                  embedding_size=100, hidden_size=64,
-                 num_layers=1, attention=False):
+                 num_layers=1, attention=False, pretrained_embeddings=None):
         super().__init__()
         self.output_size = output_size
         self.embedding_size = embedding_size
@@ -103,25 +108,24 @@ class DecoderRNN(nn.Module):
         self.num_layers = num_layers
         self.attention = attention
 
+        rnn_input_size = self.embedding_size + self.hidden_size
         if self.attention:
             self.attention_layer = Attention(self.hidden_size)
-            rnn_input_size = self.embedding_size + self.hidden_size
             self.out = nn.Linear(self.hidden_size * 2, self.output_size)
         else:
-            rnn_input_size = self.embedding_size
             self.out = nn.Linear(self.hidden_size, self.output_size)
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.embedding.weight.data.uniform_(-1e-3, 1e-3)
+        self.init_weights(pretrained_embeddings)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
     def forward(self, input, hidden, encoder_output=None, context=None):
         embed = self.embedding(input).unsqueeze(1)
+        embed = torch.cat((embed, context), 2)
 
         if self.attention:
-            embed = torch.cat((embed, context), 2)
             output, hidden = self.rnn(embed, hidden)
             weights = self.attention_layer(output, encoder_output)
             context = weights.unsqueeze(1).bmm(encoder_output)
@@ -134,6 +138,11 @@ class DecoderRNN(nn.Module):
             output = self.out(output.squeeze(1))
             output = F.log_softmax(output, dim=1)
             return output, hidden, context, encoder_output
+
+    def init_weights(self, pretrained_embeddings):
+        if pretrained_embeddings is not None:
+            self.embedding.weight.data = torch.from_numpy(
+                pretrained_embeddings).float()
 
 
 def calculate_loss(decoder_output, idx, target_tokens, target_length):
@@ -166,10 +175,11 @@ class TranslationModel(nn.Module):
 
         decoder_hidden = encoder_hidden[-1].unsqueeze(0)
 
-        context = None
         if self.decoder.attention:
             context = Variable(torch.zeros(encoder_output.size(
                 0), encoder_output.size(2))).unsqueeze(1).to(model_config.device)
+        else:
+            context = decoder_hidden.transpose(0, 1)
 
         decoder_input = Variable(torch.LongTensor(
             [model_config.SOS_token] * batch_size)).to(model_config.device)
@@ -214,7 +224,7 @@ class TranslationModel(nn.Module):
                     1).to(model_config.device)
 
             decoder_hidden = decoder_hidden.detach()
-            
+
         total_loss /= target_length.float()
 
         return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous(), total_loss.mean()
