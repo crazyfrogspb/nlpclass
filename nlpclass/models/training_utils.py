@@ -54,7 +54,6 @@ def finalize_run(best_model, best_bleu, best_loss):
 def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
     model.eval()
     epoch_loss = 0
-    input_index2word = data['train'].input_lang.index2word,
     target_index2word = data['train'].target_lang.index2word
     with torch.no_grad():
         original_strings = []
@@ -64,14 +63,13 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
                 break
             loss = model(batch)
             epoch_loss += loss.item()
-            original = output_to_translations(
-                batch['target'], input_index2word, target_index2word)
+            original = output_to_translations(batch['target'], target_index2word)
             if greedy:
                 translations = output_to_translations(
-                    model.greedy(batch), input_index2word, target_index2word)
+                    model.greedy(batch), target_index2word)
             else:
                 translations = output_to_translations(
-                    model.beam_search(batch), input_index2word, target_index2word)
+                    model.beam_search(batch), target_index2word)
             original_strings.extend(original)
             translated_strings.extend(translations)
         bleu = bleu_eval(original_strings, translated_strings)
@@ -148,8 +146,8 @@ def train_model(language, network_type, attention,
                     'model_state_dict': best_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),
-                    'input_lang_w2i': data['train'].input_lang.word2index,
-                    'target_lang_w2i': data['train'].target_lang.word2index
+                    'input_lang': data['train'].input_lang,
+                    'target_lang': data['train'].target_lang
                 }, osp.join(MODEL_DIR, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
             else:
                 early_counter += 1

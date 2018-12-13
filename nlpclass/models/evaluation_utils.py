@@ -16,16 +16,13 @@ CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
-def output_to_translations(predictions, input_index2word, target_index2word, output=True):
+def output_to_translations(predictions, index2word):
     translations = []
     for row in predictions.cpu().numpy():
         decoded_words = []
         for elem in row:
             if elem not in [model_config.SOS_token, model_config.EOS_token, model_config.PAD_token]:
-                if output:
-                    decoded_words.append(input_index2word[elem])
-                else:
-                    decoded_words.append(target_index2word[elem])
+                decoded_words.append(index2word[elem])
             if elem == model_config.EOS_token:
                 break
                 translations.append(' '.join(decoded_words))
@@ -89,5 +86,5 @@ def print_translations(runs_file, experiment_id, sample_size=3, long_threshold=2
                 sentence['input'], checkpoint['input_lang_w2i'], checkpoint['target_lang_w2i'])
             translation = output_to_translations(
                 model.beam_search(
-                    sentence), checkpoint['input_lang_w2i'], checkpoint['target_lang_w2i']
+                    sentence), checkpoint['input_lang_w2i'], checkpoint['target_lang_w2i'])
             print(original, translation)
