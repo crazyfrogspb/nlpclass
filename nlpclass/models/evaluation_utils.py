@@ -14,7 +14,7 @@ def output_to_translations(predictions, data, output=True):
         for elem in row:
             if elem not in [model_config.SOS_token, model_config.EOS_token, model_config.PAD_token]:
                 if output:
-                    decoded_words.append(data.output_lang.index2word[elem])
+                    decoded_words.append(data.target_lang.index2word[elem])
                 else:
                     decoded_words.append(data.input_lang.index2word[elem])
             if elem == model_config.EOS_token:

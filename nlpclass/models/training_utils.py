@@ -57,7 +57,7 @@ def load_data(language, subsample=1.0, batch_size=16):
                 data_dict['input_lang'], data_dict['output_lang'], data_dict['pairs'])
         else:
             data[dataset_type] = TranslationDataset(
-                data['train'].input_lang, data['train'].output_lang, data_dict['pairs'])
+                data['train'].input_lang, data['train'].target_lang, data_dict['pairs'])
         data_loaders[dataset_type] = torch.utils.data.DataLoader(dataset=data[dataset_type],
                                                                  batch_size=batch_size,
                                                                  collate_fn=text_collate_func,
@@ -159,18 +159,18 @@ def train_model(language, network_type, attention,
             multiplier = 2
         else:
             multiplier = 1
-        decoder = DecoderRNN(data['train'].output_lang.n_words,
+        decoder = DecoderRNN(data['train'].target_lang.n_words,
                              embedding_size=embedding_size,
                              hidden_size=(multiplier * hidden_size),
                              num_layers=num_layers_dec,
                              attention=attention,
-                             pretrained_embeddings=data['train'].output_lang.embeddings)
+                             pretrained_embeddings=data['train'].target_lang.embeddings)
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
             data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)
         if attention:
             warnings.warn('Attention is not supported for CNN encoder')
-        decoder = DecoderRNN(data['train'].output_lang.n_words,
+        decoder = DecoderRNN(data['train'].target_lang.n_words,
                              embedding_size, hidden_size, num_layers_dec, attention=False)
 
     model = TranslationModel(encoder, decoder,

@@ -57,7 +57,8 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        self.init_weights(pretrained_embeddings)
+        # self.init_weights(pretrained_embeddings)
+        self.embedding.weight.data.uniform_(-0.05, 0.05)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
                           dropout=self.dropout)
@@ -68,7 +69,7 @@ class EncoderRNN(nn.Module):
             embed, lengths, batch_first=True)
         encoder_output, hidden = self.rnn(packed, hidden)
         encoder_output, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            encoder_output, padding_value=model_config.PAD_token, batch_first=True)
+            encoder_output, batch_first=True)
 
         if self.bidirectional:
             hidden = torch.cat(
@@ -117,7 +118,8 @@ class DecoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        self.init_weights(pretrained_embeddings)
+        # self.init_weights(pretrained_embeddings)
+        self.embedding.weight.data.uniform_(-0.05, 0.05)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
 
