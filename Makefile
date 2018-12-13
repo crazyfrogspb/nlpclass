@@ -90,11 +90,10 @@ train_model_test:
 
 train_model:
 	export MLFLOW_EXPERIMENT_ID=2 && \
-	python nlpclass/models/train_model.py vi --bidirectional --attention && \
+	python nlpclass/models/train_model.py vi && \
 	python nlpclass/models/train_model.py vi --bidirectional && \
-	python nlpclass/models/train_model.py vi --attention && \
-	python nlpclass/models/train_model.py vi --bidirectional --attention --teacher_forcing_ratio 0.5 && \
-	python nlpclass/models/train_model.py vi --bidirectional --attention --teacher_forcing_ratio 0.0
+	python nlpclass/models/train_model.py vi --attention --bidirectional && \
+	python nlpclass/models/train_model.py vi --network_type convolutional
 
 #################################################################################
 # Self Documenting Commands                                                     #

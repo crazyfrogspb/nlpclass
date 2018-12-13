@@ -206,7 +206,7 @@ class DecoderRNN(nn.Module):
             context = weights.bmm(encoder_output)
             hidden_context = torch.cat(
                 (context.squeeze(1), hidden.squeeze(0)), dim=1)
-            hidden_context = F.tanh(self.concat(hidden_context))
+            hidden_context = torch.tanh(self.concat(hidden_context))
             output = self.out(hidden_context)
             output = F.log_softmax(output, dim=1)
             return output, hidden, context, weights
