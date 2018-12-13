@@ -140,11 +140,11 @@ class Attention(nn.Module):
 
     def forward(self, hidden, encoder_output):
         encoder_output = encoder_output.contiguous()
-        energies = self.attn(encoder_output.view(-1, self.hidden_size))
-        energies = energies.view(*encoder_output.size())
-        energies = torch.bmm(energies, hidden.transpose(1, 2)).squeeze(2)
+        scores = self.attn(encoder_output.view(-1, self.hidden_size))
+        scores = scores.view(*encoder_output.size())
+        scores = torch.bmm(scores, hidden.transpose(1, 2)).squeeze(2)
 
-        return F.softmax(energies, dim=1)
+        return F.softmax(scores, dim=1)
 
 
 class DecoderRNN(nn.Module):
