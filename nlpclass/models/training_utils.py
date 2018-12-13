@@ -8,7 +8,7 @@ import mlflow.pytorch
 import numpy as np
 import torch
 import torch.utils.data
-from torch.nn.utils import clip_grad_value_
+from torch.nn.utils import clip_grad_norm_
 
 from nlpclass.config import model_config
 from nlpclass.data.data_utils import (TranslationDataset, prepareData,
@@ -73,23 +73,16 @@ def load_data(language, subsample=1.0, batch_size=16):
 
     return data, data_loaders, max_length
 
-
-def calc_loss(logits, target, criterion):
-    logits_flat = logits.view(-1, logits.size(-1))
-    target_flat = target.view(-1, 1).squeeze()
-    return criterion(logits_flat, target_flat)
-
-
 def train_epoch(model, optimizer, scheduler, clipping_value, data, data_loaders, logging_freq=500):
     epoch_loss = 0
     for i, batch in enumerate(data_loaders['train']):
         model.train()
         optimizer.zero_grad()
-        logits, loss = model(batch)
+        loss = model(batch)
         #loss = calc_loss(logits, batch['target'], criterion)
         #print(total_loss, loss)
         loss.backward()
-        clip_grad_value_(filter(lambda p: p.requires_grad,
+        clip_grad_norm_(filter(lambda p: p.requires_grad,
                                 model.parameters()), clipping_value)
         optimizer.step()
         epoch_loss += loss.item()
@@ -122,7 +115,7 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
         for i, batch in enumerate(data_loaders[dataset_type]):
             if i > max_batch:
                 break
-            logits, loss = model(batch)
+            loss = model(batch)
             epoch_loss += loss.item()
             original = output_to_translations(batch['target'], data['train'])
             if greedy:
@@ -143,18 +136,24 @@ def train_model(language, network_type, attention,
                 embedding_size, hidden_size, num_layers_enc, num_layers_dec,
                 dropout, bidirectional,
                 batch_size, learning_rate, optimizer, clipping_value,
-                n_epochs, early_stopping,
+                n_epochs, early_stopping, pretrained_embeddings,
                 teacher_forcing_ratio, beam_search, beam_size, beam_alpha,
                 subsample, kernel_size):
     training_parameters = locals()
     data, data_loaders, max_length = load_data(language, subsample, batch_size)
 
     if network_type == 'recurrent':
+        if pretrained_embeddings:
+            embeddings_enc = data['train'].input_lang.embeddings
+            embeddings_dec = data['train'].target_lang.embeddings
+        else:
+            embeddings_enc = None
+            embedding_dec
         encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
                              embedding_size=embedding_size, hidden_size=hidden_size,
                              num_layers=num_layers_enc, dropout=dropout,
                              bidirectional=bidirectional,
-                             pretrained_embeddings=data['train'].input_lang.embeddings)
+                             pretrained_embeddings=embeddings_enc)
         if bidirectional:
             multiplier = 2
         else:
@@ -164,7 +163,7 @@ def train_model(language, network_type, attention,
                              hidden_size=(multiplier * hidden_size),
                              num_layers=num_layers_dec,
                              attention=attention,
-                             pretrained_embeddings=data['train'].target_lang.embeddings)
+                             pretrained_embeddings=embeddings_dec)
     elif network_type == 'convolutional':
         encoder = EncoderCNN(
             data['train'].input_lang.n_words, num_layers_enc, embedding_size, hidden_size, kernel_size)

@@ -57,7 +57,7 @@ class EncoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.input_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.init_weights(pretrained_embeddings)
+        self.init_weights(pretrained_embeddings)
         self.embedding.weight.data.uniform_(-0.05, 0.05)
         self.rnn = nn.GRU(self.embedding_size, self.hidden_size, self.num_layers,
                           batch_first=True, bidirectional=self.bidirectional,
@@ -118,7 +118,7 @@ class DecoderRNN(nn.Module):
 
         self.embedding = nn.Embedding(
             self.output_size, self.embedding_size, padding_idx=model_config.PAD_token)
-        # self.init_weights(pretrained_embeddings)
+        self.init_weights(pretrained_embeddings)
         self.embedding.weight.data.uniform_(-0.05, 0.05)
         self.rnn = nn.GRU(rnn_input_size, self.hidden_size,
                           self.num_layers, batch_first=True)
@@ -193,7 +193,6 @@ class TranslationModel(nn.Module):
         target_seq = x['target']
         input_length = x['input_length']
         target_length = x['target_length']
-        batch_size = input_seq.size(0)
 
         encoder_output, decoder_hidden, decoder_input, context = self.encode_sentence(
             input_seq, input_length)
@@ -205,18 +204,13 @@ class TranslationModel(nn.Module):
 
         total_loss = 0
 
-        decoder_outputs = Variable(torch.zeros(
-            model_config.max_length + 1, batch_size, self.decoder.output_size)).to(model_config.device)
-
-        for idx in range(target_seq.size(1) - 1):
+        for idx in range(target_seq.size(1)):
             decoder_output, decoder_hidden, context, weights = self.decoder(
                 decoder_input, decoder_hidden, encoder_output, context)
 
             loss = calculate_loss(decoder_output, idx,
                                   target_seq[:, idx], target_length)
             total_loss += loss
-
-            decoder_outputs[idx] = decoder_output
 
             if use_teacher_forcing:
                 decoder_input = target_seq[:, idx]
@@ -229,7 +223,7 @@ class TranslationModel(nn.Module):
 
         total_loss /= target_length.float()
 
-        return decoder_outputs[:target_length.max()].transpose(0, 1).contiguous(), total_loss.mean()
+        return total_loss.mean()
 
     def greedy(self, x):
         input_seq = x['input']
