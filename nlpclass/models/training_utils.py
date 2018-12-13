@@ -148,7 +148,7 @@ def train_model(language, network_type, attention,
             embeddings_dec = data['train'].target_lang.embeddings
         else:
             embeddings_enc = None
-            embedding_dec = None
+            embeddings_dec = None
 
         encoder = EncoderRNN(input_size=data['train'].input_lang.n_words,
                              embedding_size=embedding_size, hidden_size=hidden_size,
