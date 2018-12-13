@@ -54,6 +54,8 @@ def finalize_run(best_model, best_bleu, best_loss):
 def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
     model.eval()
     epoch_loss = 0
+    input_index2word = data['train'].input_lang.index2word,
+    target_index2word = data['train'].target_lang.index2word
     with torch.no_grad():
         original_strings = []
         translated_strings = []
@@ -62,13 +64,14 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
                 break
             loss = model(batch)
             epoch_loss += loss.item()
-            original = output_to_translations(batch['target'], data['train'])
+            original = output_to_translations(
+                batch['target'], input_index2word, target_index2word)
             if greedy:
                 translations = output_to_translations(
-                    model.greedy(batch), data['train'])
+                    model.greedy(batch), input_index2word, target_index2word)
             else:
                 translations = output_to_translations(
-                    model.beam_search(batch), data['train'])
+                    model.beam_search(batch), input_index2word, target_index2word)
             original_strings.extend(original)
             translated_strings.extend(translations)
         bleu = bleu_eval(original_strings, translated_strings)
