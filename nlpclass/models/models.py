@@ -198,9 +198,9 @@ class DecoderRNN(nn.Module):
     def forward(self, input, hidden, encoder_output=None, context=None):
         embed = self.embedding(input).unsqueeze(1)
         embed = torch.cat((embed, context), 2)
+        output, hidden = self.rnn(embed, hidden)
 
         if self.attention:
-            output, hidden = self.rnn(embed, hidden)
             weights = self.attention_layer(output, encoder_output)
             weights = weights.unsqueeze(1)
             context = weights.bmm(encoder_output)
@@ -211,7 +211,6 @@ class DecoderRNN(nn.Module):
             output = F.log_softmax(output, dim=1)
             return output, hidden, context, weights
         else:
-            output, hidden = self.rnn(embed, hidden)
             output = self.out(output.squeeze(1))
             output = F.log_softmax(output, dim=1)
             return output, hidden, context, None
