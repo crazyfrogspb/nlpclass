@@ -15,7 +15,7 @@ from nlpclass.models.evaluation_utils import evaluate, output_to_translations
 from nlpclass.models.models import initialize_model
 
 
-def tune_beam(model, data, data_loaders, tuning_dict=None):
+def tune_beam_search(model, data, data_loaders, tuning_dict=None):
     if tuning_dict is None:
         tuning_dict = {'beam_size': list(range(1, 9)),
                        'beam_alpha': [0.0, 0.5, 1.0]}
@@ -54,7 +54,7 @@ def generate_translations(model, language_data, checkpoint):
     return translations
 
 
-def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False, cleanup=True):
+def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False):
     download_model(row['Run ID'])
     results = {}
 
@@ -78,7 +78,7 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False, cle
     model.load_state_dict(checkpoint['model_state_dict'])
 
     if tune_beam:
-        results['best_parameters'] = tune_beam(
+        results['best_parameters'] = tune_beam_search(
             model, language_data['data'], language_data['data_loaders'])
         model.beam_size = results['best_parameters']['beam_size']
         model.beam_alpha = results['best_parameters']['beam_alpha']
@@ -90,14 +90,10 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False, cle
     results['translations'] = generate_translations(
         model, language_data, checkpoint)
 
-    if cleanup:
-        os.remove(osp.join(model_config.model_dir,
-                           f"checkpoint_{row['Run ID']}.pth"))
-
     return results
 
 
-def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_threshold=20):
+def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_threshold=20, cleanup=True):
     runs_df = pd.read_csv(runs_file)
 
     data, data_loaders = load_data(language, batch_size=1)
@@ -127,9 +123,14 @@ def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_th
         else:
             results = evaluate_model(row, language_data)
         for key, value in results.items():
-            runs_df.loc[i, key] = value
+            runs_df.loc[i, key] = str(value)
 
     runs_df.to_csv(output_file, index=False)
+
+    if cleanup:
+        for i, row in runs_df.iterrows():
+            os.remove(osp.join(model_config.model_dir,
+                               f"checkpoint_{row['Run ID']}.pth"))
 
 
 if __name__ == '__main__':
