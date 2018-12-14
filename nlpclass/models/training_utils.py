@@ -51,7 +51,7 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.log_metric('best_bleu', best_bleu)
 
 
-def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=False):
+def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
     model.eval()
     epoch_loss = 0
     target_index2word = data['train'].target_lang.index2word
