@@ -122,7 +122,7 @@ def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_th
         print(f'Evaluating model {i}')
         if row['Run ID'] == best_model_id:
             results = evaluate_model(
-                row, language_data, tune_beam=False, evaluate_test=True)
+                row, language_data, tune_beam=True, evaluate_test=True)
         else:
             results = evaluate_model(row, language_data)
         for key, value in results.items():
