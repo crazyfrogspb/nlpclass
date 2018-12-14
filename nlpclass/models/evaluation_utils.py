@@ -2,6 +2,7 @@
 Functions to transform predictions to sentences and to calculate BLEU scores
 """
 
+import os
 import os.path as osp
 
 import pandas as pd
@@ -9,11 +10,8 @@ import sacrebleu
 import torch
 
 from nlpclass.config import model_config
-from nlpclass.data.load_data import load_data
+from nlpclass.data.load_data import download_model, load_data
 from nlpclass.models.models import initialize_model
-
-CURRENT_PATH = osp.dirname(osp.realpath(__file__))
-MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
 def output_to_translations(predictions, index2word):
@@ -25,7 +23,6 @@ def output_to_translations(predictions, index2word):
                 decoded_words.append(index2word[elem])
             if elem == model_config.EOS_token:
                 break
-                translations.append(' '.join(decoded_words))
         translations.append(' '.join(decoded_words))
     return translations
 
@@ -39,7 +36,50 @@ def bleu_eval(ref_trans, new_trans, raw_trans=True):
         return sacrebleu.corpus_bleu(new_trans, [ref_trans]).score
 
 
-def print_translations(runs_file, experiment_id, sample_size=3, long_threshold=20):
+def translate_sentences(row, language_data, cleanup=True):
+    download_model(row['Run ID'])
+
+    checkpoint = torch.load(
+        osp.join(model_config.model_dir, f"checkpoint_{row['Run ID']}.pth"))
+
+    model = initialize_model(language_data['data'],
+                             int(row['pretrained_embeddings']),
+                             row['network_type'],
+                             int(row['embedding_size']),
+                             int(row['hidden_size']),
+                             int(row['num_layers_enc']),
+                             float(row['dropout']),
+                             bool(row['bidirectional']),
+                             int(row['kernel_size']),
+                             int(row['num_layers_dec']),
+                             row['attention'],
+                             float(row['teacher_forcing_ratio']))
+
+    model.eval()
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    translations = []
+
+    for sentence in language_data['short_sentences']:
+        translation = output_to_translations(
+            model.beam_search(
+                sentence), checkpoint['target_lang'].index2word)
+        translations.append((sentence['target_sentences'], translation))
+
+    for sentence in language_data['long_sentences']:
+        translation = output_to_translations(
+            model.beam_search(
+                sentence), checkpoint['target_lang'].index2word)
+        translations.append((sentence['target_sentences'], translation))
+
+    if cleanup:
+        os.remove(osp.join(model_config.model_dir,
+                           f"checkpoint_{row['Run ID']}.pth"))
+
+    return translations
+
+
+def print_translations_all(runs_file, sample_size=3, long_threshold=20):
     language_data = {}
     for language in ['vi', 'zh']:
         data, data_loaders = load_data(language, batch_size=1)
@@ -47,7 +87,7 @@ def print_translations(runs_file, experiment_id, sample_size=3, long_threshold=2
         short_sentences = []
         long_sentences = []
         data_iterator = iter(data_loaders['test'])
-        while len(short_sentences) < sample_size and len(long_sentences) < sample_size:
+        while len(short_sentences) < sample_size or len(long_sentences) < sample_size:
             x = next(data_iterator)
             if x['input'].size()[1] < long_threshold:
                 if len(short_sentences) < sample_size:
@@ -62,29 +102,5 @@ def print_translations(runs_file, experiment_id, sample_size=3, long_threshold=2
 
     runs_df = pd.read_csv(runs_file)
     for i, row in runs_df.iterrows():
-        checkpoint = torch.load(
-            osp.join(MODEL_DIR, f"checkpoint_{row['Run ID']}.pth"))
-
-        model = initialize_model(language_data[row['language'].item()]['data'],
-                                 row['pretrained_embeddings'].item(),
-                                 row['network_type'].item(),
-                                 row['embedding_size'].item(),
-                                 row['hidden_size'].item(),
-                                 row['num_layers_enc'].item(),
-                                 row['dropout'].item(),
-                                 row['bidirectional'].item(),
-                                 row['kernel_size'].item(),
-                                 row['num_layers_dec'].item(),
-                                 row['attention'].item(),
-                                 row['teacher_forcing_ratio'].item())
-
-        model.eval()
-        model.load_state_dict(checkpoint['model_state_dict'])
-
-        for sentence in short_sentences:
-            original = output_to_translations(
-                sentence['input'], checkpoint['input_lang_w2i'], checkpoint['target_lang_w2i'])
-            translation = output_to_translations(
-                model.beam_search(
-                    sentence), checkpoint['input_lang_w2i'], checkpoint['target_lang_w2i'])
-            print(original, translation)
+        runs_df.loc[i, 'translations'] = translate_sentences(
+            row, language_data[row['language']])

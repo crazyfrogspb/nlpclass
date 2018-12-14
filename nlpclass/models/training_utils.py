@@ -5,23 +5,18 @@ All utilities for training the model and tracking its quality
 import os.path as osp
 from copy import deepcopy
 
-import boto3
-import botocore
 import mlflow
 import mlflow.pytorch
 import numpy as np
 import torch
 import torch.utils.data
+from sklearn.model_selection import ParameterGrid
 from torch.nn.utils import clip_grad_norm_
 
 from nlpclass.config import model_config
-from nlpclass.data.load_data import load_data
+from nlpclass.data.load_data import download_model, load_data
 from nlpclass.models.evaluation_utils import bleu_eval, output_to_translations
 from nlpclass.models.models import initialize_model
-
-CURRENT_PATH = osp.dirname(osp.realpath(__file__))
-DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
-MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
 
 
 def train_epoch(model, optimizer_ins, scheduler, clipping_value, data, data_loaders):
@@ -53,7 +48,9 @@ def finalize_run(best_model, best_bleu, best_loss):
     mlflow.log_metric('best_bleu', best_bleu)
 
 
-def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greedy=True):
+def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=None, greedy=True):
+    if max_batch is None:
+        max_batch = np.inf
     model.eval()
     epoch_loss = 0
     target_index2word = data['train'].target_lang.index2word
@@ -78,6 +75,27 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
         model.train()
 
     return epoch_loss / (i + 1), bleu
+
+
+def tune_beam(model, data, data_loaders, tuning_dict=None):
+    if tuning_dict is None:
+        tuning_dict = {'beam_size': list(range(1, 9)),
+                       'beam_alpha': [0.0, 0.5, 1.0]}
+
+    tuning_grid = ParameterGrid(tuning_dict)
+
+    best_bleu = 0.0
+    best_parameters = None
+    for parameters in tuning_grid:
+        model.beam_size = parameters['beam_size']
+        model.beam_alpha = parameters['beam_alpha']
+        _, bleu = evaluate(model, data, data_loaders, greedy=False)
+        print(f'BLEU score for parameters {parameters}: {bleu}')
+        if bleu > best_bleu:
+            best_bleu = bleu
+            best_parameters = parameters
+
+    return best_parameters, best_bleu
 
 
 def initialize_optimizer(optimizer, learning_rate, model):
@@ -119,17 +137,9 @@ def train_model(language, network_type, attention,
     early_counter = 0
 
     if run_id is not None:
-        if not osp.exists(osp.join(MODEL_DIR, f'checkpoint_{run_id}.pth')):
-            s3 = boto3.resource('s3')
-            try:
-                s3.Bucket('nikitinphd').download_file(
-                    f'nlp/models/checkpoint_{run_id}.pth', osp.join(MODEL_DIR, f'checkpoint_{run_id}.pth'))
-            except botocore.exceptions.ClientError as e:
-                if e.response['Error']['Code'] == '404':
-                    raise ValueError('The model with this id does not exist')
-                else:
-                    raise
-        checkpoint = torch.load(osp.join(MODEL_DIR, f'checkpoint_{run_id}.pth'))
+        download_model(run_id)
+        checkpoint = torch.load(
+            osp.join(model_config.model_dir, f'checkpoint_{run_id}.pth'))
         model.load_state_dict(checkpoint['model_state_dict'])
         last_epoch = checkpoint['epoch']
         best_bleu = checkpoint['best_bleu']
@@ -181,7 +191,7 @@ def train_model(language, network_type, attention,
                     'early_counter': early_counter,
                     'best_bleu': best_bleu,
                     'best_loss': best_loss
-                }, osp.join(MODEL_DIR, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
+                }, osp.join(model_config.model_dir, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
             else:
                 early_counter += 1
 

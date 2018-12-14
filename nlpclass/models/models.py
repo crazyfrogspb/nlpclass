@@ -493,7 +493,7 @@ def initialize_model(data, pretrained_embeddings, network_type,
             raise ValueError('Attention is not supported for CNN encoder')
         multiplier = 1
 
-    decoder = DecoderRNN(data['train'].target_lang.n_words,
+    decoder = DecoderRNN(int(data['train'].target_lang.n_words),
                          embedding_size=embedding_size,
                          hidden_size=(multiplier * hidden_size),
                          num_layers=num_layers_dec,

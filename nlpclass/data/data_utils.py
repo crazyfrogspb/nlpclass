@@ -14,9 +14,6 @@ from gensim.models import KeyedVectors
 
 from nlpclass.config import model_config
 
-CURRENT_PATH = osp.dirname(osp.realpath(__file__))
-DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
-
 
 class Lang:
     def __init__(self, name):
@@ -83,7 +80,7 @@ class Lang:
         # load word2vec embeddings
         self.embeddings = np.zeros((self.n_words, model_config.embed_size))
         w2v_embeddings = KeyedVectors.load(
-            osp.join(DATA_DIR, 'interim', f'model_{self.name}.model'))
+            osp.join(model_config.data_dir, 'interim', f'model_{self.name}.model'))
         for token, id_ in self.word2index.items():
             if token in w2v_embeddings:
                 self.embeddings[id_] = w2v_embeddings[token]

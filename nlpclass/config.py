@@ -1,4 +1,8 @@
+import os.path as osp
+
 import torch
+
+CURRENT_PATH = osp.dirname(osp.realpath(__file__))
 
 
 class ModelConfig():
@@ -14,6 +18,8 @@ class ModelConfig():
     logging_freq = 500
     decay_patience = 5
     decay_factor = 0.1
+    data_dir = osp.join(CURRENT_PATH, '..', 'data')
+    model_dir = osp.join(CURRENT_PATH, '..', 'models')
 
 
 model_config = ModelConfig()
