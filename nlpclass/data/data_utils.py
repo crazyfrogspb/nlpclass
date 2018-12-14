@@ -2,7 +2,6 @@
 Utilities for loading and preprocessing data
 """
 
-
 import os.path as osp
 import re
 import unicodedata
@@ -101,14 +100,6 @@ def unicodeToAscii(s):
     )
 
 
-def normalizeString_fr(s):
-    # for testing original preprocessing
-    s = unicodeToAscii(s.lower().strip())
-    s = re.sub(r"([.!?])", r" \1", s)
-    s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
-    return s
-
-
 def normalizeString(s):
     # cleaning string
     s = s.lower().strip()
@@ -121,12 +112,8 @@ def normalizeString(s):
 def readLangs(lang1_name, lang2_name, lang1_data, lang2_data, reverse=False):
     # Split every line into pairs and normalize
     pairs_pure = zip(lang1_data, lang2_data)
-    if lang1_name == 'fr':
-        pairs = [[normalizeString_fr(l[0]), normalizeString_fr(l[1])]
-                 for l in pairs_pure]
-    else:
-        pairs = [[normalizeString(l[0]), normalizeString(l[1])]
-                 for l in pairs_pure]
+    pairs = [[normalizeString(l[0]), normalizeString(l[1])]
+             for l in pairs_pure]
     # Reverse pairs, make Lang instances
     if reverse:
         pairs = [list(reversed(p)) for p in pairs]

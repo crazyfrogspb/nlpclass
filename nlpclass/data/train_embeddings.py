@@ -7,11 +7,9 @@ import os.path as osp
 
 from gensim.models import Word2Vec
 
+from nlpclass.config import model_config
 from nlpclass.data.data_utils import normalizeString
 from nlpclass.models.training_utils import load_tokens
-
-CURRENT_PATH = osp.dirname(osp.realpath(__file__))
-DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
 
 lines = {}
 lines['vi'], lines['en'] = load_tokens('vi', 'train')
@@ -22,4 +20,5 @@ for lang, sentences in lines.items():
     sentences = [normalizeString(s).split(' ') for s in sentences]
     model = Word2Vec(sentences, size=256, iter=10,
                      window=5, min_count=1, workers=8)
-    model.save(osp.join(DATA_DIR, 'interim', f'model_{lang}.model'))
+    model.save(osp.join(model_config.data_dir,
+                        'interim', f'model_{lang}.model'))
