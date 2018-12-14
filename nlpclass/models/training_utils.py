@@ -133,7 +133,7 @@ def train_model(language, network_type, attention,
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': best_model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
+                    'optimizer_state_dict': optimizer_ins.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),
                     'input_lang': data['train'].input_lang,
                     'target_lang': data['train'].target_lang,

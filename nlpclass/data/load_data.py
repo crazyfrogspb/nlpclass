@@ -69,7 +69,7 @@ def download_model(run_uuid):
     if not osp.exists(osp.join(model_config.model_dir, f"checkpoint_{run_uuid}.pth")):
         s3 = boto3.resource('s3')
         try:
-            s3.Bucket('nikitinphd').download_file(
+            s3.Bucket(model_config.bucket_name).download_file(
                 f"nlp/models/checkpoint_{run_uuid}.pth",
                 osp.join(model_config.model_dir, f"checkpoint_{run_uuid}.pth"))
         except botocore.exceptions.ClientError as e:

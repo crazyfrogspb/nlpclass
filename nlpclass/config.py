@@ -20,6 +20,7 @@ class ModelConfig():
     decay_factor = 0.1
     data_dir = osp.join(CURRENT_PATH, '..', 'data')
     model_dir = osp.join(CURRENT_PATH, '..', 'models')
+    bucket_name = 'nikitinphd'
 
 
 model_config = ModelConfig()
