@@ -1,0 +1,14 @@
+artifact_uri: /home/wpg205/nlpclass/mlruns/2/0542b00aabe648ad90391b76e3f8ce04/artifacts
+end_time: 1544791907083
+entry_point_name: ''
+experiment_id: 2
+lifecycle_stage: active
+name: ''
+run_uuid: 0542b00aabe648ad90391b76e3f8ce04
+source_name: nlpclass/models/train_model.py
+source_type: 4
+source_version: bb4e2c0f0be998fa56175549b5b066608442da6d
+start_time: 1544780160696
+status: 3
+tags: []
+user_id: wpg205
