@@ -41,6 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--beam_alpha', type=float, default=1.0)
 
     parser.add_argument('--subsample', type=float, default=1.0)
+    parser.add_argument('--run_id', type=str, default=None)
 
     args = parser.parse_args()
     args_dict = vars(args)
