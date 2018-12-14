@@ -95,6 +95,7 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False):
 
 def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_threshold=20, cleanup=True):
     runs_df = pd.read_csv(runs_file)
+    runs_df = runs_df.loc[runs_df['Status'] == 'FINISHED']
 
     data, data_loaders = load_data(language, batch_size=1)
 
