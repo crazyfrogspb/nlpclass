@@ -1,0 +1,19 @@
+Run ID,Name,Source Type,Source Name,User,Status,attention,bidirectional,network_type,num_layers_enc,dropout,teacher_forcing_ratio,val_bleu,val_bleu_beam,best_bleu
+3bd62650099e4baba448b09e5fe53b0b,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,convolutional,2,0.0,1.0,1.6231442689070796,2.3016902033149536,2.3318725431609257
+8b45f03bceee46e399e77583f721924e,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,3,0.0,1.0,7.279467857037685,7.743988600432307,7.915805239791123
+8f8c2c98e9154369b01c3c1719eaa321,,LOCAL,nlpclass/models/train_model.py,wpg205,RUNNING,True,True,recurrent,2,0.2,1.0,7.351072226610847,6.789968081312849,
+1b9c4bf30f1849c793538c9cb8182fe6,,LOCAL,nlpclass/models/train_model.py,wpg205,RUNNING,True,True,recurrent,2,0.0,1.0,11.519592606875127,11.708533857219312,
+5de26844201a43faa34239cf7d1dbd3e,,LOCAL,nlpclass/models/train_model.py,wpg205,RUNNING,False,True,recurrent,1,0.0,1.0,4.045837722439924,4.396371407569378,
+0542b00aabe648ad90391b76e3f8ce04,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,convolutional,1,0.0,1.0,1.0088750652541516,1.7905999031886004,1.800540837601661
+e05089c0c9e644daa3fc9b67253e9451,,LOCAL,nlpclass/models/train_model.py,wpg205,RUNNING,True,True,recurrent,1,0.0,1.0,11.549497980026795,11.745459967539212,
+9ef83b8228e9434cb6558bab3b727b48,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,recurrent,1,0.0,1.0,3.5374220267496352,4.246421688510271,4.260612964136285
+bf1954606a1e4ff295647136d8e064c3,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,convolutional,2,0.0,1.0,2.5716345214294245,3.2991028896672048,3.304999867455195
+7cf9c374d5e1457d8728d40f653dbae2,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,True,recurrent,1,0.0,1.0,5.313164683542927,6.28031673397866,6.298825482508352
+2b9dffea46ba4f7ba2b1ee611547bed0,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,3,0.0,1.0,10.714863609929312,11.339091876570235,
+8a3508d93ea34f6481a7482994a1a0d7,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,1,0.0,0.5,10.018685011629755,11.25470548512832,
+2fd2e0309dba4b808cda8c36c4ebbab7,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,1,0.0,0.0,4.69446108369298,3.9998113062406624,
+813e7146907c44c0af079f410b6bd204,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,2,0.0,1.0,19.522498280479585,20.48605324489754,
+bbf16ca6e0c54a8f87de0802eeba4174,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,2,0.2,1.0,19.369624495035143,20.57365334835971,
+941d1dcd40dc4601be9e5f86b9b09321,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,True,True,recurrent,1,0.0,1.0,18.89684177259427,20.18745597322777,20.30208016499546
+5e09c00ae3734735a5968c5f32928340,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,convolutional,1,0.0,1.0,1.3737677658131118,2.6248342634659476,2.6479881433189547
+f9ca067d556842fb889df2fb5b4ab664,,LOCAL,nlpclass/models/train_model.py,wpg205,FINISHED,False,False,recurrent,1,0.0,1.0,4.273689449894719,5.548827350879786,5.555999705822473
