@@ -63,7 +63,7 @@ def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=100, greed
                 break
             loss = model(batch)
             epoch_loss += loss.item()
-            original = output_to_translations(batch['target'], target_index2word)
+            original = batch['target_sentences']
             if greedy:
                 translations = output_to_translations(
                     model.greedy(batch), target_index2word)

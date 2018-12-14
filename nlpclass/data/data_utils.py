@@ -217,8 +217,9 @@ class TranslationDataset(torch.utils.data.Dataset):
         input_indices = indexesFromSentence(self.input_lang, self.pairs[idx][0])
         target_indices = indexesFromSentence(
             self.target_lang, self.pairs[idx][1])
+        target_sentence = self.pairs[idx][1]
 
-        return input_indices, target_indices
+        return input_indices, target_indices, target_sentence
 
 
 def pad_seq(seq, max_length):
@@ -232,7 +233,7 @@ def text_collate_func(batch):
     # dynamically sorts a batch in descending order of the length of the input sequences
     seq_pairs = sorted(batch,
                        key=lambda p: len(p[0]), reverse=True)
-    input_seqs, target_seqs = zip(*seq_pairs)
+    input_seqs, target_seqs, target_sentences = zip(*seq_pairs)
 
     input_lengths = [len(s) for s in input_seqs]
     input_padded = [pad_seq(seq, max(input_lengths)) for seq in input_seqs]
@@ -242,4 +243,5 @@ def text_collate_func(batch):
     return {'input': torch.LongTensor(input_padded).to(model_config.device),
             'target': torch.LongTensor(target_padded).to(model_config.device),
             'input_length': torch.LongTensor(input_lengths).to(model_config.device),
-            'target_length': torch.LongTensor(target_lengths).to(model_config.device)}
+            'target_length': torch.LongTensor(target_lengths).to(model_config.device),
+            'target_sentences': target_sentences}
