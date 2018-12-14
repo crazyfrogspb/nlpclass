@@ -3,14 +3,8 @@ Main entry point, reads parameters from the command line and trains the model
 """
 
 import argparse
-import os.path as osp
 
 from nlpclass.models.training_utils import train_model
-
-CURRENT_PATH = osp.dirname(osp.realpath(__file__))
-DATA_DIR = osp.join(CURRENT_PATH, '..', '..', 'data')
-MODEL_DIR = osp.join(CURRENT_PATH, '..', '..', 'models')
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train NLP model')

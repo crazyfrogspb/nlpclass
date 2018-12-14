@@ -109,6 +109,10 @@ train_model:
 	python nlpclass/models/train_model.py vi --attention --bidirectional && \
 	python nlpclass/models/train_model.py vi --network_type convolutional
 
+evaluate:
+	python nlpclass/report/final_evaluation.py vi mlruns/runs_vi.csv mlruns/runs_vi_final.csv && \
+	python nlpclass/report/final_evaluation.py zh mlruns/runs_zh.csv mlruns/runs_zh_final.csv
+
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################

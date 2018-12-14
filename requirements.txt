@@ -3,3 +3,4 @@ mlflow==0.8.0
 numpy==1.15.4
 sacrebleu==1.2.12
 torch==1.0.0
+pandas==0.23.4

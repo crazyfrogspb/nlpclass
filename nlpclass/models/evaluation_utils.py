@@ -1,17 +1,11 @@
 """
 Functions to transform predictions to sentences and to calculate BLEU scores
 """
-
-import os
-import os.path as osp
-
-import pandas as pd
+import numpy as np
 import sacrebleu
 import torch
 
 from nlpclass.config import model_config
-from nlpclass.data.load_data import download_model, load_data
-from nlpclass.models.models import initialize_model
 
 
 def output_to_translations(predictions, index2word):
@@ -36,71 +30,30 @@ def bleu_eval(ref_trans, new_trans, raw_trans=True):
         return sacrebleu.corpus_bleu(new_trans, [ref_trans]).score
 
 
-def translate_sentences(row, language_data, cleanup=True):
-    download_model(row['Run ID'])
-
-    checkpoint = torch.load(
-        osp.join(model_config.model_dir, f"checkpoint_{row['Run ID']}.pth"))
-
-    model = initialize_model(language_data['data'],
-                             int(row['pretrained_embeddings']),
-                             row['network_type'],
-                             int(row['embedding_size']),
-                             int(row['hidden_size']),
-                             int(row['num_layers_enc']),
-                             float(row['dropout']),
-                             bool(row['bidirectional']),
-                             int(row['kernel_size']),
-                             int(row['num_layers_dec']),
-                             row['attention'],
-                             float(row['teacher_forcing_ratio']))
-
+def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=None, greedy=True):
+    if max_batch is None:
+        max_batch = np.inf
     model.eval()
-    model.load_state_dict(checkpoint['model_state_dict'])
-
-    translations = []
-
-    for sentence in language_data['short_sentences']:
-        translation = output_to_translations(
-            model.beam_search(
-                sentence), checkpoint['target_lang'].index2word)
-        translations.append((sentence['target_sentences'], translation))
-
-    for sentence in language_data['long_sentences']:
-        translation = output_to_translations(
-            model.beam_search(
-                sentence), checkpoint['target_lang'].index2word)
-        translations.append((sentence['target_sentences'], translation))
-
-    if cleanup:
-        os.remove(osp.join(model_config.model_dir,
-                           f"checkpoint_{row['Run ID']}.pth"))
-
-    return translations
-
-
-def print_translations_all(runs_file, sample_size=3, long_threshold=20):
-    language_data = {}
-    for language in ['vi', 'zh']:
-        data, data_loaders = load_data(language, batch_size=1)
-
-        short_sentences = []
-        long_sentences = []
-        data_iterator = iter(data_loaders['test'])
-        while len(short_sentences) < sample_size or len(long_sentences) < sample_size:
-            x = next(data_iterator)
-            if x['input'].size()[1] < long_threshold:
-                if len(short_sentences) < sample_size:
-                    short_sentences.append(x)
+    epoch_loss = 0
+    target_index2word = data['train'].target_lang.index2word
+    with torch.no_grad():
+        original_strings = []
+        translated_strings = []
+        for i, batch in enumerate(data_loaders[dataset_type]):
+            if i > max_batch:
+                break
+            loss = model(batch)
+            epoch_loss += loss.item()
+            original = batch['target_sentences']
+            if greedy:
+                translations = output_to_translations(
+                    model.greedy(batch), target_index2word)
             else:
-                if len(long_sentences) < sample_size:
-                    long_sentences.append(x)
+                translations = output_to_translations(
+                    model.beam_search(batch), target_index2word)
+            original_strings.extend(original)
+            translated_strings.extend(translations)
+        bleu = bleu_eval(original_strings, translated_strings)
+        model.train()
 
-        language_data[language] = {
-            'data': data, 'data_loaders': data_loaders,
-            'short_sentences': short_sentences, 'long_sentences': long_sentences}
-
-    runs_df = pd.read_csv(runs_file)
-    for i, row in runs_df.iterrows():
-        runs_df.loc[i, 'translations'] = translate_sentences(
-            row, language_data[row['language']])
+    return epoch_loss / (i + 1), bleu

@@ -10,12 +10,11 @@ import mlflow.pytorch
 import numpy as np
 import torch
 import torch.utils.data
-from sklearn.model_selection import ParameterGrid
 from torch.nn.utils import clip_grad_norm_
 
 from nlpclass.config import model_config
 from nlpclass.data.load_data import download_model, load_data
-from nlpclass.models.evaluation_utils import bleu_eval, output_to_translations
+from nlpclass.models.evaluation_utils import evaluate
 from nlpclass.models.models import initialize_model
 
 
@@ -46,56 +45,6 @@ def finalize_run(best_model, best_bleu, best_loss):
     # finalize run
     mlflow.log_metric('best_loss', best_loss)
     mlflow.log_metric('best_bleu', best_bleu)
-
-
-def evaluate(model, data, data_loaders, dataset_type='dev', max_batch=None, greedy=True):
-    if max_batch is None:
-        max_batch = np.inf
-    model.eval()
-    epoch_loss = 0
-    target_index2word = data['train'].target_lang.index2word
-    with torch.no_grad():
-        original_strings = []
-        translated_strings = []
-        for i, batch in enumerate(data_loaders[dataset_type]):
-            if i > max_batch:
-                break
-            loss = model(batch)
-            epoch_loss += loss.item()
-            original = batch['target_sentences']
-            if greedy:
-                translations = output_to_translations(
-                    model.greedy(batch), target_index2word)
-            else:
-                translations = output_to_translations(
-                    model.beam_search(batch), target_index2word)
-            original_strings.extend(original)
-            translated_strings.extend(translations)
-        bleu = bleu_eval(original_strings, translated_strings)
-        model.train()
-
-    return epoch_loss / (i + 1), bleu
-
-
-def tune_beam(model, data, data_loaders, tuning_dict=None):
-    if tuning_dict is None:
-        tuning_dict = {'beam_size': list(range(1, 9)),
-                       'beam_alpha': [0.0, 0.5, 1.0]}
-
-    tuning_grid = ParameterGrid(tuning_dict)
-
-    best_bleu = 0.0
-    best_parameters = None
-    for parameters in tuning_grid:
-        model.beam_size = parameters['beam_size']
-        model.beam_alpha = parameters['beam_alpha']
-        _, bleu = evaluate(model, data, data_loaders, greedy=False)
-        print(f'BLEU score for parameters {parameters}: {bleu}')
-        if bleu > best_bleu:
-            best_bleu = bleu
-            best_parameters = parameters
-
-    return best_parameters, best_bleu
 
 
 def initialize_optimizer(optimizer, learning_rate, model):

@@ -74,6 +74,6 @@ def download_model(run_uuid):
                 osp.join(model_config.model_dir, f"checkpoint_{run_uuid}.pth"))
         except botocore.exceptions.ClientError as e:
             if e.response['Error']['Code'] == '404':
-                raise ValueError('The model with this id does not exist')
+                raise ValueError(f'The model with id {run_uuid} does not exist')
             else:
                 raise
