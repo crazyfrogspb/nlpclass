@@ -85,7 +85,8 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False):
 
     if evaluate_test:
         results['test_loss'], results['test_bleu'] = evaluate(
-            model, language_data['data'], language_data['data_loaders'], dataset_type='test')
+            model, language_data['data'], language_data['data_loaders'],
+            dataset_type='test', greedy=False)
 
     results['translations'] = generate_translations(
         model, language_data, checkpoint)
@@ -118,9 +119,10 @@ def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_th
         'short_sentences': short_sentences, 'long_sentences': long_sentences}
 
     for i, row in runs_df.iterrows():
+        print(f'Evaluating model {i}')
         if row['Run ID'] == best_model_id:
             results = evaluate_model(
-                row, language_data, tune_beam=True, evaluate_test=True)
+                row, language_data, tune_beam=False, evaluate_test=True)
         else:
             results = evaluate_model(row, language_data)
         for key, value in results.items():
