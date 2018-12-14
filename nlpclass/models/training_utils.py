@@ -114,6 +114,9 @@ def train_model(language, network_type, attention,
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer_ins, 'min', patience=model_config.decay_patience, factor=model_config.decay_factor)
     last_epoch = -1
+    best_bleu = 0.0
+    best_loss = np.inf
+    early_counter = 0
 
     if run_id is not None:
         if not osp.exists(osp.join(MODEL_DIR, f'checkpoint_{run_id}.pth')):
@@ -129,14 +132,14 @@ def train_model(language, network_type, attention,
         checkpoint = torch.load(osp.join(MODEL_DIR, f'checkpoint_{run_id}.pth'))
         model.load_state_dict(checkpoint['model_state_dict'])
         last_epoch = checkpoint['epoch']
+        best_bleu = checkpoint['best_bleu']
+        best_loss = checkpoint['best_loss']
+        early_counter = checkpoint['early_counter']
         optimizer_ins.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         data['train'].input_lang = checkpoint['input_lang']
         data['train'].target_lang = checkpoint['target_lang']
 
-    best_bleu = 0.0
-    best_loss = np.inf
-    early_counter = 0
     best_model = deepcopy(model)
 
     with mlflow.start_run(run_uuid=run_id):
@@ -174,7 +177,10 @@ def train_model(language, network_type, attention,
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),
                     'input_lang': data['train'].input_lang,
-                    'target_lang': data['train'].target_lang
+                    'target_lang': data['train'].target_lang,
+                    'early_counter': early_counter,
+                    'best_bleu': best_bleu,
+                    'best_loss': best_loss
                 }, osp.join(MODEL_DIR, f'checkpoint_{mlflow.active_run()._info.run_uuid}.pth'))
             else:
                 early_counter += 1
