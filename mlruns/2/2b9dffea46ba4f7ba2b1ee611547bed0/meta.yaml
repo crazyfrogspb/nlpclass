@@ -1,5 +1,5 @@
 artifact_uri: /home/wpg205/nlpclass/mlruns/2/2b9dffea46ba4f7ba2b1ee611547bed0/artifacts
-end_time: 1544771308998
+end_time: 1544805591786
 entry_point_name: ''
 experiment_id: 2
 lifecycle_stage: active
@@ -9,6 +9,6 @@ source_name: nlpclass/models/train_model.py
 source_type: 4
 source_version: bb4e2c0f0be998fa56175549b5b066608442da6d
 start_time: 1544753792556
-status: 3
+status: 4
 tags: []
 user_id: wpg205
