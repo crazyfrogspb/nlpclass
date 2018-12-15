@@ -83,12 +83,12 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False):
         model.beam_size = results['best_parameters']['beam_size']
         model.beam_alpha = results['best_parameters']['beam_alpha']
 
-    #results['val_short_loss'], results['val_short_bleu'] = evaluate(
-    #    model, language_data['data'], language_data['data_loaders'],
-    #    dataset_type='dev_short', greedy=False)
-    #results['val_long_loss'], results['val_long_bleu'] = evaluate(
-    #    model, language_data['data'], language_data['data_loaders'],
-    #    dataset_type='dev_long', greedy=False)
+    results['val_short_loss'], results['val_short_bleu'] = evaluate(
+        model, language_data['data'], language_data['data_loaders'],
+        dataset_type='dev_short', greedy=False)
+    results['val_long_loss'], results['val_long_bleu'] = evaluate(
+        model, language_data['data'], language_data['data_loaders'],
+        dataset_type='dev_long', greedy=False)
 
     if evaluate_test:
         results['test_loss'], results['test_bleu'] = evaluate(
