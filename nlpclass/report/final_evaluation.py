@@ -83,6 +83,13 @@ def evaluate_model(row, language_data, tune_beam=False, evaluate_test=False):
         model.beam_size = results['best_parameters']['beam_size']
         model.beam_alpha = results['best_parameters']['beam_alpha']
 
+    #results['val_short_loss'], results['val_short_bleu'] = evaluate(
+    #    model, language_data['data'], language_data['data_loaders'],
+    #    dataset_type='dev_short', greedy=False)
+    #results['val_long_loss'], results['val_long_bleu'] = evaluate(
+    #    model, language_data['data'], language_data['data_loaders'],
+    #    dataset_type='dev_long', greedy=False)
+
     if evaluate_test:
         results['test_loss'], results['test_bleu'] = evaluate(
             model, language_data['data'], language_data['data_loaders'],
@@ -122,7 +129,7 @@ def evaluate_all_models(language, runs_file, output_file, sample_size=3, long_th
         print(f'Evaluating model {i}')
         if row['Run ID'] == best_model_id:
             results = evaluate_model(
-                row, language_data, tune_beam=True, evaluate_test=True)
+                row, language_data, tune_beam=False, evaluate_test=True)
         else:
             results = evaluate_model(row, language_data)
         for key, value in results.items():

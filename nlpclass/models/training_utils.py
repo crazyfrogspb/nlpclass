@@ -1,5 +1,6 @@
 """
-All utilities for training the model and tracking its quality
+All utilities for training the model and tracking its qualityself.
+Tracking is based on the beatiful MLFlow framework.
 """
 
 import os.path as osp

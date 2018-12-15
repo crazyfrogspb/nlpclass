@@ -34,7 +34,7 @@ def load_data(language, subsample=1.0, batch_size=16):
     # create dataset and data loader instances
     data = {}
     data_loaders = {}
-    for dataset_type in ['train', 'dev', 'test']:
+    for dataset_type in ['train', 'dev', 'dev_short', 'dev_long', 'test']:
         lines_lang, lines_en = load_tokens(language, dataset_type)
 
         if subsample < 1.0 and dataset_type == 'train':
